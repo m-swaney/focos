@@ -1,0 +1,45 @@
+{
+  "errors": [],
+  "accounts": [
+    {
+      "org": {"domain": "examplebank.example", "name": "Example Bank", "sfin-url": "https://examplebank.example/sfin"},
+      "id": "ACT-CHK-1",
+      "name": "Everyday Checking",
+      "currency": "USD",
+      "balance": "2500.10",
+      "available-balance": "2400.00",
+      "balance-date": 1772409600,
+      "transactions": [
+        {"id": "t1", "posted": 1772236800, "amount": "-45.20", "description": "GROCERY MART #12", "payee": "Grocery Mart", "memo": "", "pending": false},
+        {"id": "t2", "posted": 1772323200, "amount": "3000.00", "description": "PAYROLL ACME CORP", "payee": "Acme", "memo": "", "pending": false},
+        {"id": "t3", "posted": 1772409600, "amount": "-12.00", "description": "COFFEE PLACE", "payee": "Coffee Place", "memo": "", "pending": true}
+      ]
+    },
+    {
+      "org": {"domain": "cardco.example", "name": "Card Co"},
+      "id": "ACT-CARD-1",
+      "name": "Rewards Visa",
+      "currency": "USD",
+      "balance": "-410.55",
+      "available-balance": "4589.45",
+      "balance-date": 1772409600,
+      "transactions": [
+        {"id": "c1", "posted": 1772236800, "amount": "-80.00", "description": "GAS STATION", "payee": "Gas Station", "memo": "", "pending": false}
+      ]
+    },
+    {
+      "org": {"domain": "broker.example", "name": "Example Brokerage"},
+      "id": "ACT-BRK-1",
+      "name": "Individual Brokerage",
+      "currency": "USD",
+      "balance": "10250.00",
+      "available-balance": "250.00",
+      "balance-date": 1772409600,
+      "transactions": [],
+      "holdings": [
+        {"id": "h1", "symbol": "VTI", "description": "Vanguard Total Market ETF", "shares": "20", "cost_basis": "4000.00", "market_value": "5000.00", "currency": "USD"},
+        {"id": "h2", "symbol": "AAPL", "description": "Apple Inc", "shares": "25", "cost_basis": "3750.00", "market_value": "5000.00", "currency": "USD"}
+      ]
+    }
+  ]
+}

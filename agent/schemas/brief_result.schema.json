@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BriefResult",
+  "type": "object",
+  "required": ["summary_line", "alerts", "needs_user"],
+  "properties": {
+    "summary_line": {"type": "string", "description": "One sentence headline for the dashboard."},
+    "report_path": {"type": "string", "description": "Data-dir-relative path of the markdown brief (filled by the harness in api mode)."},
+    "alerts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "text"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["info", "warn", "critical"]},
+          "text": {"type": "string"}
+        }
+      }
+    },
+    "needs_user": {"type": "array", "items": {"type": "string"}},
+    "decisions_logged": {"type": "integer"},
+    "proposals": {"type": "array", "items": {"type": "string"}},
+    "trades_placed": {"type": "array", "items": {"type": "string"}},
+    "decisions": {
+      "type": "array",
+      "description": "api mode: decision entries the harness appends to state/decisions.jsonl",
+      "items": {
+        "type": "object",
+        "required": ["kind", "text"],
+        "properties": {
+          "date": {"type": "string"},
+          "run": {"type": "string"},
+          "kind": {"type": "string", "enum": ["recommendation", "proposal"]},
+          "text": {"type": "string"},
+          "evidence": {"type": "string"},
+          "review_on": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "proposal_specs": {
+      "type": "array",
+      "description": "api mode: sandbox proposals the harness writes as paper proposal files",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "side", "dollar_amount", "thesis"],
+        "properties": {
+          "ref_id": {"type": "string"},
+          "symbol": {"type": "string"},
+          "side": {"type": "string", "enum": ["buy", "sell"]},
+          "dollar_amount": {"type": "number"},
+          "thesis": {"type": "string"},
+          "entry_reason": {"type": "string"},
+          "stop_loss": {"type": ["number", "null"]},
+          "exit_plan": {"type": "string"},
+          "horizon_days": {"type": ["integer", "null"]}
+        }
+      }
+    }
+  }
+}

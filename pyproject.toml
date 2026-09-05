@@ -1,0 +1,43 @@
+[project]
+name = "focos"
+version = "0.1.0"
+description = "Family Office Chief Of Staff: Robinhood + Sure ledger + scheduled Claude Code briefs"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas>=3.0",
+    "numpy>=2.0",
+    "yfinance>=1.0",
+    "quantstats>=0.0.80",
+    "PyPortfolioOpt>=1.5",
+    "matplotlib>=3.9",
+    "pyyaml>=6.0",
+    "pydantic>=2.8",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+    "typer>=0.12",
+    "jsonschema>=4.23",
+    "dulwich>=0.22",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "ruamel.yaml>=0.18",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+anthropic = ["anthropic>=1.4"]
+openai = ["openai>=3.0"]
+gemini = ["google-genai>=2.0"]
+all = ["anthropic>=1.4", "openai>=3.0", "google-genai>=2.0"]
+
+[project.scripts]
+focos = "focos.cli:app"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["focos*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

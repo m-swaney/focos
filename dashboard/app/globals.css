@@ -1,0 +1,299 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --breakpoint-3xl: 120rem;
+}
+
+/*
+ * Omarchy semantic palette. Dark is Tokyo Night (Omarchy's default),
+ * light is Flexoki Light. Roles follow colors.toml: background ramp,
+ * foreground ramp, accent, selection, muted, plus named colours.
+ */
+:root {
+  color-scheme: light;
+  --tabbar-h: 3.5rem;
+  --page: #f2efe4; /* dark_background */
+  --panel: #fffcf0; /* background */
+  --panel-2: #e6e4d9; /* lighter_background */
+  --hairline: #cecdc3; /* selection */
+  --ink: #100f0f; /* bright_foreground */
+  --secondary: #403e3c; /* light_foreground */
+  --muted: #878580; /* dark_foreground */
+  --accent: #205ea6;
+  --gain: #66800b;
+  --loss: #af3029;
+  --warn: #ad8301;
+  --critical: #af3029;
+  --focus: #205ea6;
+  --series-1: #4385be;
+  --series-2: #bc5215;
+  --series-3: #a02f6f;
+  --dim: #cecdc3;
+  --wash-gain: rgba(102, 128, 11, 0.12);
+  --wash-loss: rgba(175, 48, 41, 0.1);
+  --wash-warn: rgba(173, 131, 1, 0.12);
+  --wash-critical: rgba(175, 48, 41, 0.12);
+  --chart-grid: #e6e4d9;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #13141c; /* dark_background */
+  --panel: #1a1b26; /* background */
+  --panel-2: #24283b; /* lighter_background */
+  --hairline: #292e42; /* selection */
+  --ink: #c0caf5; /* bright_foreground */
+  --secondary: #a9b1d6; /* foreground */
+  --muted: #565f89; /* dark_foreground */
+  --accent: #7aa2f7;
+  --gain: #9ece6a;
+  --loss: #f7768e;
+  --warn: #e0af68;
+  --critical: #ff7a93;
+  --focus: #7aa2f7;
+  --series-1: #7aa2f7;
+  --series-2: #ff9e64;
+  --series-3: #b9f27c;
+  --dim: #414868;
+  --wash-gain: rgba(158, 206, 106, 0.12);
+  --wash-loss: rgba(247, 118, 142, 0.12);
+  --wash-warn: rgba(224, 175, 104, 0.12);
+  --wash-critical: rgba(255, 122, 147, 0.14);
+  --chart-grid: #292e42;
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-hairline: var(--hairline);
+  --color-ink: var(--ink);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-warn: var(--warn);
+  --color-critical: var(--critical);
+  --color-focus: var(--focus);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-dim: var(--dim);
+  --color-wash-gain: var(--wash-gain);
+  --color-wash-loss: var(--wash-loss);
+  --color-wash-warn: var(--wash-warn);
+  --color-wash-critical: var(--wash-critical);
+  --font-sans: var(--font-mono), ui-monospace, "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  --font-mono: var(--font-mono), ui-monospace, "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-mono), ui-monospace, "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Native popover reset: the UA centres it on screen with a border and padding. */
+  [popover] {
+    inset: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    overflow: visible;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+
+  ::selection {
+    background: var(--hairline);
+  }
+}
+
+html.theme-transition,
+html.theme-transition * {
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease,
+    fill 150ms ease,
+    stroke 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transition,
+  html.theme-transition * {
+    transition: none;
+  }
+}
+
+/* Module container: 1px border, near-square corners, panel surface. */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+}
+
+/* Small uppercase mono label: card titles, stat labels, column groups. */
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Data tables */
+table.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+table.tbl th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+table.tbl td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: top;
+}
+table.tbl tbody tr:last-child td {
+  border-bottom: 0;
+}
+table.tbl th.num,
+table.tbl td.num {
+  text-align: right;
+  white-space: nowrap;
+}
+table.tbl tbody tr:hover td {
+  background: color-mix(in oklab, var(--panel-2) 55%, transparent);
+}
+table.tbl tr.subtotal td {
+  font-weight: 600;
+  background: color-mix(in oklab, var(--panel-2) 45%, transparent);
+}
+table.tbl tr.group td {
+  padding-top: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 0;
+}
+table.tbl tbody tr.group:hover td {
+  background: transparent;
+}
+
+/* Brief markdown */
+.md {
+  font-size: 13px;
+  line-height: 1.65;
+  max-width: 80ch;
+}
+.md h1 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 1.25rem;
+}
+.md h2 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 1.75rem 0 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--hairline);
+}
+.md h3 {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 1rem 0 0.4rem;
+}
+.md p {
+  margin: 0.5rem 0;
+}
+.md ul,
+.md ol {
+  margin: 0.4rem 0 0.6rem 1.25rem;
+}
+.md li {
+  margin: 0.2rem 0;
+}
+.md code {
+  background: var(--panel-2);
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 0.92em;
+}
+.md pre {
+  background: var(--panel-2);
+  padding: 10px 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.md pre code {
+  background: transparent;
+  padding: 0;
+}
+.md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.6rem 0;
+  font-size: 12px;
+}
+.md th,
+.md td {
+  border-bottom: 1px solid var(--hairline);
+  padding: 4px 10px 4px 0;
+  text-align: left;
+}
+.md th {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.md strong {
+  font-weight: 700;
+}
+.md a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md blockquote {
+  border-left: 2px solid var(--hairline);
+  padding-left: 12px;
+  color: var(--secondary);
+  margin: 0.6rem 0;
+}

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RobinhoodSnapshot",
+  "type": "object",
+  "required": ["accounts", "quotes"],
+  "properties": {
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["account_number", "brokerage_account_type", "agentic_allowed", "portfolio", "equity_positions"],
+        "properties": {
+          "account_number": {"type": "string"},
+          "rhs_account_number": {"type": ["string", "null"]},
+          "nickname": {"type": ["string", "null"]},
+          "brokerage_account_type": {"type": "string"},
+          "type": {"type": ["string", "null"]},
+          "agentic_allowed": {"type": "boolean"},
+          "option_level": {"type": ["string", "null"]},
+          "portfolio": {
+            "type": "object",
+            "required": ["total_value", "cash", "buying_power"],
+            "properties": {
+              "total_value": {"type": "number"},
+              "equity_value": {"type": ["number", "null"]},
+              "options_value": {"type": ["number", "null"]},
+              "crypto_value": {"type": ["number", "null"]},
+              "cash": {"type": "number"},
+              "buying_power": {"type": "number"},
+              "pending_deposits": {"type": ["number", "null"]}
+            }
+          },
+          "equity_positions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["symbol", "quantity"],
+              "properties": {
+                "symbol": {"type": "string"},
+                "quantity": {"type": "number"},
+                "average_buy_price": {"type": ["number", "null"]},
+                "shares_available_for_sells": {"type": ["number", "null"]}
+              }
+            }
+          },
+          "option_positions": {"type": "array", "items": {"type": "object"}},
+          "crypto_positions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["code", "quantity"],
+              "properties": {"code": {"type": "string"}, "quantity": {"type": "number"}}
+            }
+          },
+          "recent_orders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {"type": ["string", "null"]},
+                "symbol": {"type": ["string", "null"]},
+                "side": {"type": ["string", "null"]},
+                "state": {"type": ["string", "null"]},
+                "quantity": {"type": ["number", "null"]},
+                "average_price": {"type": ["number", "null"]},
+                "created_at": {"type": ["string", "null"]}
+              }
+            }
+          }
+        }
+      }
+    },
+    "quotes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "last_trade_price", "previous_close"],
+        "properties": {
+          "symbol": {"type": "string"},
+          "last_trade_price": {"type": "number"},
+          "previous_close": {"type": "number"},
+          "quote_time": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "earnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "date"],
+        "properties": {"symbol": {"type": "string"}, "date": {"type": "string"}, "time": {"type": ["string", "null"]}}
+      }
+    },
+    "news": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "title"],
+        "properties": {
+          "symbol": {"type": "string"},
+          "title": {"type": "string"},
+          "source": {"type": ["string", "null"]},
+          "published_at": {"type": ["string", "null"]},
+          "url": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "tax_lots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["account_number", "symbol", "quantity", "open_date", "term"],
+        "properties": {
+          "account_number": {"type": "string"},
+          "symbol": {"type": "string"},
+          "quantity": {"type": "number"},
+          "cost_per_share": {"type": ["number", "null"]},
+          "open_date": {"type": "string"},
+          "term": {"type": "string"}
+        }
+      }
+    },
+    "notes": {"type": "string"}
+  }
+}

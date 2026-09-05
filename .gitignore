@@ -1,0 +1,25 @@
+# python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+dist/
+
+# node
+node_modules/
+dashboard/.next/
+dashboard/out/
+
+# secrets and local state (this repo is code only; households keep data in their own folder)
+.env
+.env.*
+!.env.example
+config/
+state/
+reports/
+data/
+sure/
+agent/settings.headless.json
+agent/mcp.json
+agent/system.rendered.md
