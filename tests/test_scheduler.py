@@ -18,7 +18,7 @@ def test_run_jobs_from_config(initialized_home: Path):
     assert set(jobs) == {"daily", "weekly", "monthly"}
     d = jobs["daily"]
     assert d.schedule.kind == "daily" and d.schedule.hour == 7 and d.schedule.minute == 5
-    assert d.argv[1:3] == ["-m", "focos"] and "--home" in d.argv and str(paths.HOME) in d.argv
+    assert d.argv[1:4] == ["-I", "-m", "focos"] and "--home" in d.argv and str(paths.HOME) in d.argv
     assert d.argv[-3:] == ["run", "--mode", "daily"]
     if sys.platform == "win32":
         assert d.argv[0].lower().endswith("pythonw.exe")

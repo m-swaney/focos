@@ -74,4 +74,32 @@ def apply(store: SQLiteStore, proposals: list[dict], primary: tuple[str, ...]) -
         if starts:
             cutoff = min(starts)
             store.set_meta("legacy_cutoff", cutoff)
-    return {"aliased": len(proposals), "entities_updated": moved, "legacy_cutoff": cutoff}
+    return {"aliased": len(proposals), "entities_updated": moved, "legacy_cutoff": cutoff, "types_carried": carry_types(store, primary)}
+
+
+def carry_types(store: SQLiteStore, primary: tuple[str, ...]) -> list[dict]:
+    """The retired ledger knew what each account was (a mortgage named "******0238" infers as checking from the
+    feed's name alone). For every aliased live account without a confirmed type in entities.yml account_types,
+    take the legacy account's type and classification, in the store and in the config."""
+    from ... import settings
+    from ...config import writer
+
+    doc = settings.entities_v2()
+    types = dict(doc.get("account_types") or {})
+    legacy = {a.id: a for a in store.accounts() if a.provider not in primary and a.provider != "manual"}
+    carried = []
+    for a in store.accounts(providers=primary):
+        if a.id in types:
+            continue
+        src = next((legacy[x] for x in a.aliases if x in legacy), None)
+        if src is None or (src.account_type, src.classification) == (a.account_type, a.classification):
+            continue
+        subtype = src.subtype if (src.subtype or src.account_type != a.account_type) else a.subtype
+        store.set_account_type(a.id, src.account_type, subtype, src.classification)
+        types[a.id] = {"type": src.account_type, "subtype": subtype, "classification": src.classification}
+        carried.append({"id": a.id, "name": a.name, "from": a.account_type, "to": src.account_type})
+    if carried:
+        doc["account_types"] = types
+        writer.write_file("entities.yml", doc)
+        settings.reset()
+    return carried

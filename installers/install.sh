@@ -82,7 +82,7 @@ if [ -f "$APP/uv.lock" ]; then uv sync --project "$APP" --frozen --all-extras --
 cat > "$BIN/focos" <<'EOF'
 #!/bin/sh
 APP="$(cat "$HOME/.focos/app.txt")"
-exec "$APP/.venv/bin/python" -m focos "$@"
+exec "$APP/.venv/bin/python" -I -m focos "$@"
 EOF
 chmod +x "$BIN/focos"
 case ":$PATH:" in *":$BIN:"*) ;; *)
@@ -94,10 +94,10 @@ esac
 
 # ---- data folder + service
 log "initializing your data folder at $DATA_DIR"
-"$PY" -m focos init --home "$DATA_DIR" --set-default >/dev/null
-"$PY" -m focos --home "$DATA_DIR" agent render-settings >/dev/null
+"$PY" -I -m focos init --home "$DATA_DIR" --set-default >/dev/null
+"$PY" -I -m focos --home "$DATA_DIR" agent render-settings >/dev/null
 log "registering the dashboard to start at login"
-"$PY" -m focos --home "$DATA_DIR" service install >/dev/null || true
+"$PY" -I -m focos --home "$DATA_DIR" service install >/dev/null || true
 
 log "installed focos $VER"
 log "open http://localhost:3100/setup to finish setup (the dashboard may take ~20 s to start the first time)"

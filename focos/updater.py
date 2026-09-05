@@ -128,7 +128,7 @@ def _prepare_env(app: Path, log) -> Path:
 def _rewire(py: Path, home: Path, log) -> None:
     """Run the NEW version's migrate / settings render / service + schedule install so every absolute path points at it."""
     for args in (["migrate"], ["agent", "render-settings"], ["schedule", "install"], ["service", "install"]):
-        r = subprocess.run([str(py), "-m", "focos", "--home", str(home), *args], capture_output=True, text=True)
+        r = subprocess.run([str(py), "-I", "-m", "focos", "--home", str(home), *args], capture_output=True, text=True)
         log(f"{' '.join(args)}: {'ok' if r.returncode == 0 else 'failed: ' + (r.stderr or r.stdout)[-200:]}")
 
 

@@ -101,17 +101,17 @@ $shim = Join-Path $Bin 'focos.cmd'
 @echo off
 setlocal
 set /p APP=<"%USERPROFILE%\.focos\app.txt"
-"%APP%\.venv\Scripts\python.exe" -m focos %*
+"%APP%\.venv\Scripts\python.exe" -I -m focos %*
 "@ | Set-Content $shim -Encoding ASCII
 $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
 if ($userPath -notlike "*$Bin*") { [Environment]::SetEnvironmentVariable('PATH', "$userPath;$Bin", 'User'); $env:PATH += ";$Bin" }
 
 # ---- data folder + service
 Log "initializing your data folder at $DataDir"
-& $Py -m focos init --home $DataDir --set-default | Out-Null
-& $Py -m focos --home $DataDir agent render-settings | Out-Null
+& $Py -I -m focos init --home $DataDir --set-default | Out-Null
+& $Py -I -m focos --home $DataDir agent render-settings | Out-Null
 Log 'registering the dashboard to start at login'
-& $Py -m focos --home $DataDir service install | Out-Null
+& $Py -I -m focos --home $DataDir service install | Out-Null
 
 Log "installed focos $Ver"
 Log 'open http://localhost:3100/setup to finish setup (the dashboard may take ~20 s to start the first time)'

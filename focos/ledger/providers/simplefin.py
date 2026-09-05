@@ -23,6 +23,7 @@ from .base import (BalancePoint, Holding, LedgerAccount, ManualAccountSpec, Prov
 from .sqlite_store import SQLiteStore
 
 ENV_ACCESS_URL = "SIMPLEFIN_ACCESS_URL"
+SOFT_NOTICE = re.compile(r"exceeds limit|was capped|capped at", re.I)   # Bridge notices that do not fail a pull
 PROVIDER = "simplefin"
 PRIMARY_PROVIDERS = ("simplefin", "mercury")   # live feeds writing into the store
 MANUAL_PROVIDER = "manual"
@@ -166,7 +167,8 @@ def merge_results(results: list[PullResult]) -> PullResult:
     return PullResult(ok=all(r.ok for r in results), skipped=all(r.skipped for r in results),
                       accounts=sum(r.accounts for r in results), transactions_new=sum(r.transactions_new for r in results),
                       transactions_updated=sum(r.transactions_updated for r in results), holdings=sum(r.holdings for r in results),
-                      errors=[e for r in results for e in r.errors], start=min(starts) if starts else None, end=max(ends) if ends else None)
+                      errors=[e for r in results for e in r.errors], warnings=[w for r in results for w in r.warnings],
+                      start=min(starts) if starts else None, end=max(ends) if ends else None)
 
 
 class SimpleFINProvider:
@@ -241,7 +243,9 @@ class SimpleFINProvider:
         return self.ingest(payload, start, end)
 
     def ingest(self, payload: dict, start: date, end: date) -> PullResult:
-        errors = [str(e) for e in (payload.get("errors") or [])]
+        messages = [str(e) for e in (payload.get("errors") or [])]
+        warnings = [m for m in messages if SOFT_NOTICE.search(m)]
+        errors = [m for m in messages if m not in warnings]
         overrides = self._type_overrides()
         n_tx_new = n_tx_upd = n_hold = 0
         accounts = payload.get("accounts") or []
@@ -259,7 +263,8 @@ class SimpleFINProvider:
                 n_hold += self.store.upsert_holdings(acct.id, acct.balance_date or end.isoformat(), holdings)
         self.store.record_pull(self.name, start.isoformat(), end.isoformat(), len(accounts), n_tx_new + n_tx_upd, errors)
         return PullResult(ok=not errors or bool(accounts), accounts=len(accounts), transactions_new=n_tx_new,
-                          transactions_updated=n_tx_upd, holdings=n_hold, errors=errors, start=start.isoformat(), end=end.isoformat())
+                          transactions_updated=n_tx_upd, holdings=n_hold, errors=errors, warnings=warnings,
+                          start=start.isoformat(), end=end.isoformat())
 
     def _type_overrides(self) -> dict[str, tuple[str, str | None, str]]:
         """Account types confirmed in the wizard live in entities.yml account_types: {<id>: {type, subtype, classification}}."""

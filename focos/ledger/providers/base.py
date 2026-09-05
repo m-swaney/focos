@@ -103,6 +103,7 @@ class PullResult(BaseModel):
     transactions_updated: int = 0
     holdings: int = 0
     errors: list[str] = []
+    warnings: list[str] = []                  # provider notices that did not stop the pull (e.g. range capped)
     start: str | None = None
     end: str | None = None
 

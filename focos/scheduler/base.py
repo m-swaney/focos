@@ -78,7 +78,7 @@ def python_exe(windowless: bool = False) -> str:
 
 
 def _base_argv(windowless: bool) -> list[str]:
-    return [python_exe(windowless), "-m", "focos", "--home", str(paths.HOME)]
+    return [python_exe(windowless), "-I", "-m", "focos", "--home", str(paths.HOME)]
 
 
 def run_jobs(cfg: dict | None = None) -> list[Job]:
