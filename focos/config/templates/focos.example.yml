@@ -1,0 +1,41 @@
+# focos settings. The setup wizard writes this file; you can also edit it by hand.
+# Secrets (API keys, SimpleFIN access URL) never go here; they live in .env next to this folder.
+version: 1
+home_label: "Our household"
+
+ledger:
+  provider: simplefin            # simplefin | sure | none
+  refresh_min_hours: 20          # do not re-pull bank data more often than this
+  history_days_initial: 365      # how far back to ask on the first pull (banks usually return ~90 days)
+
+holdings:
+  source: none                   # robinhood_mcp | simplefin_holdings | csv | none
+
+ai:
+  mode: api                      # api = any provider key below; agent = Claude Code CLI (advanced)
+  provider: anthropic            # anthropic | openai | gemini | ollama
+  model: null                    # null = provider default
+  model_heavy: null              # used for weekly/monthly briefs; null = same as model
+  max_output_tokens: 8192
+  budget_usd:
+    daily: 1.0
+    weekly: 3.0
+    monthly: 4.0
+    interview: 1.0
+
+agent:                           # only used when ai.mode is agent
+  claude_cli: auto
+  sandbox_enabled: false
+
+schedule:                        # local time in household.timezone (profile.yml)
+  daily:   { days: weekdays, time: "16:35" }
+  weekly:  { day: sun, time: "18:00" }
+  monthly: { day: 1, time: "19:00" }
+
+git:
+  commit_each_run: true          # commit state/ and reports/ in this folder after every run
+  push: false                    # only if you add a private remote yourself
+
+dashboard:
+  port: 3100
+  api_port: 3101

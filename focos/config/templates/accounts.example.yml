@@ -1,0 +1,11 @@
+# Brokerage accounts whose holdings get analyzed. Bank and card accounts do not go here; they come from
+# the ledger automatically. Full account numbers are never stored; matching uses the last 4 digits.
+version: 2
+brokerage: []
+# - key: taxable_main                 # short id used in snapshots and briefs
+#   label: Brokerage (taxable)
+#   role: taxable                     # taxable | roth_ira | traditional_ira | 401k | hsa | 529 | sandbox | other
+#   entity: personal
+#   source: simplefin_holdings        # robinhood_mcp | simplefin_holdings | csv
+#   match: { ledger_account_id: "simplefin:ACT-..." }    # or { last4: "1234" } for robinhood_mcp
+#   agent_access: read                # trade is only allowed on the sandbox role

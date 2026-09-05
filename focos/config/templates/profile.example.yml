@@ -1,0 +1,70 @@
+# Household profile. The setup interview fills this in; missing fields are treated as unknown.
+# Never put account numbers here. Estimates are fine; refine any time.
+version: 2
+
+owner:
+  name: null                     # first name, used in briefs ("Actions for <name>")
+  birth_year: null
+  filing_status: null            # single | married_joint | married_separate | head_of_household
+  federal_bracket_pct: null      # marginal federal bracket, e.g. 22
+  employment: null               # free text
+  cpa: null                      # true if a CPA prepares the return
+
+household:
+  timezone: America/New_York     # IANA zone; the wizard sets this from your browser
+  currency: USD
+  country: US
+  state: null                    # two-letter state, for state-tax notes
+
+spouse:
+  in_household: false
+  employment: null
+  annual_gross: null
+  accounts_linked: false         # true once their accounts are in the ledger
+
+income:
+  sources: []                    # - { label: Salary, kind: w2, annual: 90000, entity: personal }
+  notes: null
+
+spending:
+  monthly_core_expenses: null    # rent/mortgage, food, utilities, insurance; excludes debt payments
+  monthly_discretionary: null
+  excludes_debt_payments: true
+
+cash_policy:
+  emergency_fund_months: 3
+  min_checking_buffer: null
+  business_cash_is_reserve: false
+  notes: null
+
+debts: []                        # balances come from the ledger; terms below add rates
+debt_terms: []                   # - { match: "MORTGAGE", rate_pct: 6.5, rate_type: fixed, note: primary residence }
+
+retirement:
+  target_age: null
+  target_annual_spend_today_dollars: null
+  contributions: {}              # self: { roth_ira: { limit: 7000, ytd: 0 } }
+  employer_plan: null
+  business_plan: null
+
+family:
+  dependents: 0
+  planning_children: false
+  notes: null
+
+protection:                      # null = unknown; false = a gap the plan should flag
+  term_life: null
+  will_or_trust: null
+  umbrella_liability: null
+  disability: null
+
+tax_agenda: []                   # questions to bring to a CPA
+
+risk:
+  tolerance: null                # conservative | moderate | aggressive
+  max_single_stock_weight_pct: 20
+  max_sector_weight_pct: 45
+  notes: null
+
+targets: {}                      # allocation targets per account role, e.g.
+                                 # taxable: { us_broad_index: 60, international: 20, individual_stocks: 20 }

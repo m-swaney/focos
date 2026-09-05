@@ -1,0 +1,10 @@
+# Real estate tracked outside the bank feed. Values refresh monthly from Zillow (needs RAPIDAPI_KEY in .env)
+# or stay at manual_value. focos updates last_value / last_refreshed in place.
+properties: []
+# - key: home
+#   name: Primary residence
+#   address: null                 # street address for Zillow lookup; leave null for manual
+#   entity: personal
+#   source: manual                # zillow | manual
+#   manual_value: 350000
+#   linked_loan: "MORTGAGE"       # regex matched against liability account names

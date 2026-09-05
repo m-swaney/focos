@@ -1,0 +1,15 @@
+# focos data dir. Secrets and raw dumps (which can contain full account numbers) never get committed.
+.env
+.env.*
+state/raw/
+state/logs/
+state/cache/
+state/backups/
+state/diagnostics-*.zip
+reports/tearsheets/
+agent/
+sure/.env
+sure/backups/
+__pycache__/
+.DS_Store
+Thumbs.db

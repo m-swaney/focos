@@ -1,0 +1,17 @@
+# Entities: the household plus any business, trust, or other unit you want tracked separately.
+# `personal` is required. Accounts are assigned by id (from the ledger) or by name_hints regex.
+version: 2
+entities:
+  personal:
+    label: Personal
+    kind: household
+    account_ids: []
+    name_hints: null             # e.g. "(CHASE|CAPITAL ONE)"; explicit account_ids always win
+# my_business:
+#   label: My Business LLC
+#   kind: business
+#   account_ids: []
+#   name_hints: "(MY BUSINESS|MERCURY)"
+
+# Transfers between these pairs are netted out of income and expense. Empty = every business <-> personal.
+corridors: []

@@ -1,0 +1,44 @@
+# Portfolio analytics settings. Generic defaults for US investors.
+benchmark: SPY
+max_weight: 0.15          # per-name cap in optimizer what-ifs
+years: 3                  # price history window for risk stats
+weekly_years: 3
+monthly_years: 5
+big_move_pct: 5.0         # single-day move that counts as a "mover"
+
+# Asset classes used for drift vs profile.targets. Anything not listed counts as individual_stocks.
+classes:
+  SPY: us_broad_index
+  IVV: us_broad_index
+  VOO: us_broad_index
+  VTI: us_broad_index
+  DIA: us_broad_index
+  QQQ: us_large_growth_index
+  VUG: us_large_growth_index
+  SCHG: us_large_growth_index
+  SPMO: factor_tilts
+  SPHQ: factor_tilts
+  VB: small_cap
+  VEA: international
+  VWO: international
+  VXUS: international
+  BND: bonds
+  AGG: bonds
+
+etf_labels:
+  SPY: S&P 500
+  IVV: S&P 500
+  VOO: S&P 500
+  VTI: US Total Market
+  QQQ: Nasdaq 100
+  DIA: Dow 30
+  VUG: US Large Growth
+  SCHG: US Large Growth
+  SPMO: S&P 500 Momentum
+  SPHQ: S&P 500 Quality
+  VB: US Small Cap
+  VEA: Developed ex-US
+  VWO: Emerging Markets
+  VXUS: Total International
+  BND: US Bonds
+  AGG: US Bonds

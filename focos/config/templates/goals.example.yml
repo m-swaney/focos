@@ -1,0 +1,14 @@
+# Goals the monthly review measures progress against. Order = priority. Amounts in your currency.
+# kind drives how progress is computed:
+#   emergency_fund          household cash vs months x core expenses (params.months)
+#   debt_payoff             balance of the first liability whose name matches params.match (regex)
+#   retirement_contribution profile.retirement.contributions[params.owner][params.account_role].ytd
+#   purchase | custom       params.funded_amount, updated by hand
+version: 2
+goals:
+  - kind: emergency_fund
+    name: Emergency fund
+    entity: personal
+    target_amount: null          # null = derived from months x monthly_core_expenses
+    deadline: null
+    params: { months: 3 }

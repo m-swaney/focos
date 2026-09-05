@@ -1,0 +1,22 @@
+# Guardrails for the optional trading sandbox (off unless focos.yml agent.sandbox_enabled is true and a
+# brokerage account has role: sandbox). Enforced in code by focos.sandbox.rules and the PreToolUse gate.
+broker: robinhood
+mode_default: paper          # paper | live ; the live switch is state/sandbox/mode.json
+warmup_runs: 10              # paper-only runs before live trading is permitted
+require_approval_first_n: 5  # first N live orders need state/sandbox/approvals/<ref_id>.approved
+
+budget_usd: 500              # money you are willing to let the sandbox manage
+budget_growth_per_week_usd: 0
+funded_on: null
+max_position_weight: 0.25
+max_order_usd: 250
+weekly_budget_usd: 500
+cash_floor_pct: 0.05
+max_orders_per_run: 2
+max_orders_per_week: 4
+
+instruments: [stock, etf]
+min_price: 5.0
+blocklist_patterns: ["^(TQQQ|SQQQ|SPXL|SPXS|UVXY|SVXY|SOXL|SOXS|TSLL|NVDL)$", "3X", "2X", "LEVERAGED", "INVERSE"]
+market_orders_only_during_rth: true
+no_trading_days: []          # extra dates (YYYY-MM-DD) beyond weekends and market holidays

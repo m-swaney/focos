@@ -1,0 +1,31 @@
+# Rules the netting engine applies to transactions that are not already matched as transfers.
+# Matching is a case-insensitive regex on transaction name + merchant. The setup wizard seeds this file
+# from the institutions it discovers; edit freely.
+#
+# rules:            classify one-legged transfers so they never count as income or expense.
+#                   `counterparty: <entity>` records an inter-entity flow with that entity.
+# ignore_patterns:  names that look like transfers but are ordinary spending.
+# income_labels:    tag real inflows per entity so cash-flow reports say what kind of money arrived.
+
+rules: []
+# - name: Brokerage deposit
+#   match: "(ROBINHOOD|FIDELITY|SCHWAB|VANGUARD)"
+#   direction: outflow
+#   entity: personal
+#   classify_as: investment_contribution
+# - name: Mortgage payment
+#   match: "MORTGAGE"
+#   direction: outflow
+#   entity: personal
+#   classify_as: debt_payment
+
+ignore_patterns: []
+
+income_labels:
+  personal:
+    - label: w2_pay
+      match: "(PAYROLL|DIRECT DEP|ADP|GUSTO|PAYCHEX|SALARY)"
+    - label: refund_or_rebate
+      match: "(REFUND|REBATE|CASHBACK|CASH BACK|REWARD)"
+    - label: other_income
+      match: ".*"
