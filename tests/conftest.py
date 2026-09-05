@@ -20,7 +20,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for k in [k for k in os.environ if k.startswith("FOCOS_") and "__" in k]:
         monkeypatch.delenv(k, raising=False)
     # never let the developer's own secrets (loaded from their .env at import) reach a test
-    for k in ("SURE_API_KEY_RW", "SURE_API_KEY_RO", "SURE_API_URL", "SIMPLEFIN_ACCESS_URL", "MERCURY_TOKEN",
+    for k in ("SIMPLEFIN_ACCESS_URL", "MERCURY_TOKEN",
               "RAPIDAPI_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "FOCOS_DASH_TOKEN"):
         monkeypatch.delenv(k, raising=False)
     h = tmp_path / "home"

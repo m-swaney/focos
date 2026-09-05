@@ -9,7 +9,7 @@ def _a(sev: str, code: str, text: str, **data) -> dict:
 
 
 def build(snapshot: dict, portfolio: dict, profile: dict, catalysts: dict, history: list[dict],
-          tax_lots: dict | None = None, sure_ok: bool | None = None, consolidated: dict | None = None) -> list[dict]:
+          tax_lots: dict | None = None, ledger_ok: bool | None = None, consolidated: dict | None = None) -> list[dict]:
     alerts: list[dict] = []
     risk = profile.get("risk") or {}
     max_single = float(risk.get("max_single_stock_weight_pct") or 20) / 100
@@ -70,12 +70,12 @@ def build(snapshot: dict, portfolio: dict, profile: dict, catalysts: dict, histo
         alerts.append(_a("warn", "prices_stale", "Yahoo Finance failed; risk stats use cached prices"))
     if snapshot.get("notes"):
         alerts.append(_a("warn", "snapshot_notes", f"Snapshot notes: {snapshot['notes'][:200]}"))
-    if sure_ok is False:
-        alerts.append(_a("warn", "sure_unavailable", "Sure ledger unavailable this run; entity and cash sections are stale"))
+    if ledger_ok is False:
+        alerts.append(_a("warn", "ledger_unavailable", "Bank ledger unavailable this run; entity and cash sections are stale"))
     if consolidated and consolidated.get("available"):
         if consolidated.get("unmapped_accounts"):
             names = ", ".join(str(a.get("name")) for a in consolidated["unmapped_accounts"][:5])
-            alerts.append(_a("warn", "unmapped_accounts", f"Sure accounts not mapped to an entity: {names}"))
+            alerts.append(_a("warn", "unmapped_accounts", f"Ledger accounts not mapped to an entity: {names}"))
         um = ((consolidated.get("cash_flow") or {}).get("30d") or {}).get("unmatched") or []
         if um:
             alerts.append(_a("warn", "unmatched_transfers", f"{len(um)} transfer-looking transaction(s) in the last 30 days have no matching leg; review in the weekly brief"))

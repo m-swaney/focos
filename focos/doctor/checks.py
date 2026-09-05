@@ -125,6 +125,10 @@ def run_all() -> list[Check]:
     out.append(Check(id="schedule", ok=bool(daily_job and daily_job.installed), severity="warn", title=f"Scheduled runs ({sch.platform})",
                      detail=(f"next {daily_job.next_run}" if daily_job and daily_job.installed else "not installed"),
                      fix="Run `focos schedule install` (Setup > Schedule).", fix_action="reinstall_schedule"))
+    legacy = getattr(sch, "legacy_present", None)
+    if legacy and (names := legacy()):
+        out.append(Check(id="legacy_tasks", ok=False, severity="warn", title="Old FOCOS scheduled tasks still registered",
+                         detail=", ".join(names), fix="Run `focos schedule install`; it removes them."))
     svc = jobs.get(scheduler.JOB_NAMES["service"])
     out.append(Check(id="service", ok=bool(svc and svc.installed), severity="info", title="Dashboard service at login",
                      detail="installed" if svc and svc.installed else "not installed", fix="Run `focos service install`."))

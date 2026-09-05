@@ -1,4 +1,4 @@
-"""In-memory normalization of v1 (single-household, Robinhood + Sure keyed) config into the v2 layout.
+"""In-memory normalization of v1 (single-household, Robinhood keyed) config into the v2 layout.
 
 Both the runtime (settings.*_v2 helpers) and `focos migrate` use these transforms, so a data dir on the
 old layout keeps working unchanged until its owner migrates.
@@ -25,7 +25,6 @@ def accounts_v2(raw: dict[str, Any] | None) -> dict[str, Any]:
         out.setdefault("version", 2)
         out.setdefault("brokerage", [])
         return out
-    sure_ids = raw.get("sure") or {}
     brokerage = []
     for key, spec in (raw.get("robinhood") or {}).items():
         spec = spec or {}
@@ -38,9 +37,6 @@ def accounts_v2(raw: dict[str, Any] | None) -> dict[str, Any]:
             "match": {"last4": str(spec["last4"])} if spec.get("last4") else {},
             "agent_access": "trade" if spec.get("agent_access") == "trade" else "read",
         }
-        sid = sure_ids.get(f"robinhood_{key}")
-        if sid:
-            entry["ledger_account_id"] = f"sure:{sid}"
         brokerage.append(entry)
     return {"version": 2, "brokerage": brokerage}
 
@@ -83,7 +79,9 @@ def is_v2_profile(raw: dict[str, Any]) -> bool:
     return "owner" in raw or "person" not in raw
 
 
-def profile_v2(raw: dict[str, Any] | None) -> dict[str, Any]:
+def profile_v2(raw: dict[str, Any] | None, entities: dict[str, Any] | None = None) -> dict[str, Any]:
+    """entities: the v2 entities document; with exactly one business entity the migrated business income source
+    is labeled and attributed to it instead of the household."""
     raw = raw or {}
     if is_v2_profile(raw):
         out = copy.deepcopy(raw)
@@ -100,8 +98,14 @@ def profile_v2(raw: dict[str, Any] | None) -> dict[str, Any]:
     sources: list[dict[str, Any]] = []
     biz = income.get("annual_business_income")
     if biz is not None:
-        sources.append({"label": "Business income", "kind": "business", "annual": biz,
-                        "range": income.get("annual_business_income_range"), "entity": HOUSEHOLD})
+        businesses = [(k, e or {}) for k, e in ((entities or {}).get("entities") or {}).items()
+                      if k != HOUSEHOLD and (e or {}).get("kind", "business") == "business"]
+        label, ent_key = "Business income", HOUSEHOLD
+        if len(businesses) == 1:
+            ent_key, spec = businesses[0]
+            label = f"{spec.get('label') or ent_key} income"
+        sources.append({"label": label, "kind": "business", "annual": biz,
+                        "range": income.get("annual_business_income_range"), "entity": ent_key})
     w2 = income.get("annual_gross_w2")
     if w2:
         sources.append({"label": "W-2 salary", "kind": "w2", "annual": w2, "entity": HOUSEHOLD})

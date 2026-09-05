@@ -79,7 +79,8 @@ focos update                    # install the newest release
 - **Agent mode** (`ai.mode: agent` in `config/focos.yml`): if Claude Code is installed, the brief writer reads the
   data files itself and can connect Robinhood's MCP server for live holdings, plus an optional, code-gated
   trading sandbox (`config/sandbox_rules.yml`, off by default). See `agent/prompts/`.
-- **Sure ledger**: households already running a self-hosted Sure instance can keep it (`ledger.provider: sure`).
+- **Mercury**: business accounts that do not sync through SimpleFIN can be read straight from Mercury with a
+  read-only API token (Setup > Banks, or `focos ledger mercury --token ...`).
 - **Config schema**: `focos config validate` checks every file; `focos config schema` exports JSON Schema.
 
 ## Developing

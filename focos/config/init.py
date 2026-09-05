@@ -56,7 +56,13 @@ def init_home(home: Path, set_default: bool = False) -> dict:
     home = home.expanduser().resolve()
     home.mkdir(parents=True, exist_ok=True)
     created: list[str] = []
+    from .migrate import home_version
+
+    existing = home_version(home) if (home / "config").exists() else CONFIG_VERSION
+    legacy = existing < CONFIG_VERSION
     for name, tmpl in TEMPLATE_OF.items():
+        if legacy and name == "focos.yml":
+            continue  # `focos migrate` derives focos.yml from the old layout (agent mode, holdings source, sandbox)
         _copy_if_missing(paths.TEMPLATES / tmpl, home / "config" / name, created)
     write_env(home, created)
     gi = home / ".gitignore"
@@ -64,14 +70,14 @@ def init_home(home: Path, set_default: bool = False) -> dict:
         shutil.copyfile(paths.TEMPLATES / "gitignore.template", gi)
         created.append(".gitignore")
     if not (home / "VERSION").exists():
-        write_version(home, CONFIG_VERSION)
+        write_version(home, existing)
         created.append("VERSION")
     for sub in ("state/raw", "state/logs", "state/cache", "state/backups", "state/snapshots/holdings",
                 "state/snapshots/ledger", "state/derived/latest", "state/sandbox/proposals",
                 "state/sandbox/approvals", "reports/daily", "reports/weekly", "reports/monthly",
                 "reports/tearsheets", "data", "agent"):
         (home / sub).mkdir(parents=True, exist_ok=True)
-    result = {"home": str(home), "created": created, "git": git_init(home), "version": CONFIG_VERSION}
+    result = {"home": str(home), "created": created, "git": git_init(home), "version": existing, "needs_migration": legacy}
     if set_default:
         result["pointer"] = str(set_default_home(home))
     return result

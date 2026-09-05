@@ -49,7 +49,7 @@ def test_accounts_v1_to_v2_roles_and_ledger_ids():
     assert by_key["brokerage"]["role"] == "taxable" and by_key["brokerage"]["match"] == {"last4": "1111"}
     assert by_key["ira"]["role"] == "roth_ira"
     assert by_key["play"]["role"] == "sandbox" and by_key["play"]["agent_access"] == "trade"
-    assert by_key["play"]["ledger_account_id"] == "sure:aaaa-3"
+    assert "ledger_account_id" not in by_key["play"]  # brokerage totals come from the holdings snapshot, never a retired ledger
     assert all(a["source"] == "robinhood_mcp" and a["entity"] == "personal" for a in out["brokerage"])
 
 

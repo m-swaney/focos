@@ -15,7 +15,4 @@ def current(name: str | None = None) -> LedgerProvider | None:
     if name == "simplefin":
         from .simplefin import SimpleFINProvider
         return SimpleFINProvider()
-    if name == "sure":
-        from .sure import SureProvider
-        return SureProvider()
     return None

@@ -483,72 +483,6 @@ def sandbox_show() -> None:
     _echo(state.summary(cur))
 
 
-sure_app = typer.Typer(no_args_is_help=True)
-app.add_typer(sure_app, name="sure")
-
-
-@sure_app.command("accounts")
-def sure_accounts() -> None:
-    """List Sure accounts (id, name, type, balance) to fill config/entities.yml and accounts.yml."""
-    from .sources.sure import SureClient
-    c = SureClient()
-    rows = [{"id": a.get("id"), "name": a.get("name"), "type": a.get("account_type"), "subtype": a.get("subtype"),
-             "classification": a.get("classification"), "balance": a.get("balance"),
-             "institution": a.get("institution_name")} for a in c.accounts()]
-    _echo(rows)
-
-
-@sure_app.command("pull")
-def sure_pull(date: str = typer.Option(None), mode: str = "manual", sync: bool = False) -> None:
-    """Run the ledger step alone: pull Sure, push valuations, write consolidated/entities JSON."""
-    from .ledger import stage
-    from .sources import robinhood_snapshot as rh
-    date = date or _date.today().isoformat()
-    cur, _ = rh.latest_two()
-    out = stage.run(cur, date, "daily" if sync else mode, trigger_sync=sync)
-    for name in ("consolidated", "entities"):
-        settings.write_json(paths.LATEST / f"{name}.json", out[name])
-    _echo({k: v for k, v in out.items() if k not in ("consolidated", "entities")})
-
-
-@sure_app.command("sync")
-def sure_sync() -> None:
-    """Ask Sure to sync all provider connections now."""
-    from .sources.sure import SureClient
-    _echo(SureClient().trigger_sync())
-
-
-@sure_app.command("simplefin")
-def sure_simplefin(token: str = typer.Option(None, help="SimpleFIN setup token (one-time). Omit to re-link the existing connection.")) -> None:
-    """Claim a SimpleFIN setup token in Sure and link every discovered account with an inferred type."""
-    script = (paths.ROOT / "sure" / "scripts" / "simplefin_link.rb").read_text(encoding="utf-8")
-    env = {**os.environ, "SETUP_TOKEN": token or ""}
-    cmd = ["docker", "compose", "exec", "-T", "-e", "SETUP_TOKEN", "web", "bin/rails", "runner", script]
-    r = subprocess.run(cmd, cwd=paths.ROOT / "sure", env=env, capture_output=True, text=True)
-    for line in (r.stdout + r.stderr).splitlines():
-        if line.startswith(("ITEM", "IMPORT", "SA ", "DONE", "NO_ITEM")) or "Error" in line[:60]:
-            typer.echo(line)
-    if r.returncode != 0:
-        raise typer.Exit(r.returncode)
-
-
-@sure_app.command("health")
-def sure_health() -> None:
-    from .sources.sure import SureClient
-    import os
-    base = os.environ.get("SURE_API_URL", "http://127.0.0.1:3000")
-    try:
-        c = SureClient()
-        _echo({"base_url": c.base_url, "reachable": c.health(), "key": "set"})
-    except Exception as e:
-        import httpx
-        try:
-            reachable = httpx.get(f"{base}/up", timeout=10).status_code == 200
-        except Exception:
-            reachable = False
-        _echo({"base_url": base, "reachable": reachable, "key": f"missing ({e})"})
-
-
 property_app = typer.Typer(no_args_is_help=True)
 app.add_typer(property_app, name="property")
 
@@ -556,7 +490,7 @@ app.add_typer(property_app, name="property")
 @property_app.command("refresh")
 def property_refresh(date: str = typer.Option(None), no_push: bool = False,
                      force: bool = typer.Option(False, help="call Zillow even if refreshed in the last 20 days")) -> None:
-    """Refresh property values (Zillow or manual) and push valuations to Sure. Zillow free tier: 25 calls/month."""
+    """Refresh property values (Zillow or manual) and write them to the ledger. Zillow free tier: 25 calls/month."""
     from .ledger import properties
     _echo(properties.refresh(date, push=not no_push, force=force))
 
@@ -596,11 +530,6 @@ def doctor(export: bool = typer.Option(False, "--export", help="write a redacted
     from .run import tokens
     checks["tokens"] = tokens.expiries()
     checks["token_alerts"] = tokens.alerts()
-    try:
-        import httpx
-        checks["sure_up"] = httpx.get("http://127.0.0.1:3000/up", timeout=5).status_code == 200
-    except Exception:
-        checks["sure_up"] = False
     try:
         import httpx
         checks["dashboard_up"] = httpx.get("http://127.0.0.1:3100/", timeout=5).status_code == 200

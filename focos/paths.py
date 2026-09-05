@@ -67,7 +67,6 @@ CACHE: Path
 BACKUPS: Path
 SNAPSHOTS_RH: Path
 SNAPSHOTS_HOLDINGS: Path
-SNAPSHOTS_SURE: Path
 SNAPSHOTS_LEDGER: Path
 DERIVED: Path
 LATEST: Path
@@ -96,7 +95,6 @@ def _bind(home: Path) -> None:
     g["BACKUPS"] = g["STATE"] / "backups"
     g["SNAPSHOTS_RH"] = g["STATE"] / "snapshots" / "robinhood"
     g["SNAPSHOTS_HOLDINGS"] = g["STATE"] / "snapshots" / "holdings"
-    g["SNAPSHOTS_SURE"] = g["STATE"] / "snapshots" / "sure"
     g["SNAPSHOTS_LEDGER"] = g["STATE"] / "snapshots" / "ledger"
     g["DERIVED"] = g["STATE"] / "derived"
     g["LATEST"] = g["DERIVED"] / "latest"

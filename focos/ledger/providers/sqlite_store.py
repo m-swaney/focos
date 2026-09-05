@@ -166,7 +166,11 @@ class SQLiteStore:
         return new, updated
 
     def transactions(self, start: date, end: date, account_ids: list[str] | None = None, include_pending: bool = False,
-                     providers: Iterable[str] | None = None) -> list[Transaction]:
+                     providers: Iterable[str] | None = None, legacy_providers: Iterable[str] | None = None,
+                     legacy_before: dict[str, str | None] | None = None) -> list[Transaction]:
+        """legacy_providers: providers whose rows are only history (imported from a retired ledger). Their rows are
+        returned only when legacy_before names the account, and then only before that account's cutoff date
+        (None = no cutoff). transfer_id / other_account_id come from raw when an import recorded them."""
         q = """SELECT t.*, a.name AS account_name, a.account_type AS account_type, a.subtype AS subtype, a.provider AS provider
                FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.posted_date BETWEEN ? AND ?"""
         args: list = [start.isoformat(), end.isoformat()]
@@ -182,14 +186,100 @@ class SQLiteStore:
             q += f" AND a.provider IN ({','.join('?' * len(provs))})"
             args += provs
         rows = self.conn.execute(q + " ORDER BY t.posted_date, t.id", args).fetchall()
+        legacy_set = set(legacy_providers or ())
         out = []
         for r in rows:
+            if r["provider"] in legacy_set:
+                if legacy_before is None or r["account_id"] not in legacy_before:
+                    continue
+                cutoff = legacy_before[r["account_id"]]
+                if cutoff is not None and r["posted_date"] >= cutoff:
+                    continue
+            try:
+                raw = json.loads(r["raw"] or "{}")
+            except ValueError:
+                raw = {}
             acct_type = r["subtype"] or r["account_type"] or ""
             out.append(Transaction(id=r["id"], date=r["posted_date"], account_id=r["account_id"], account_name=r["account_name"],
                                    account_type=str(acct_type).lower(), amount=r["amount"], name=r["description"], merchant=r["payee"],
-                                   category=None, tags=[], transfer_id=None, other_account_id=None,
+                                   category=None, tags=[], transfer_id=raw.get("transfer_id") or None,
+                                   other_account_id=raw.get("other_account_id") or None,
                                    external_id=r["id"].split(":")[-1], source=r["provider"], pending=bool(r["pending"])))
         return out
+
+    # ---- legacy history and account identity
+    def providers_present(self) -> list[str]:
+        return [r["provider"] for r in self.conn.execute("SELECT DISTINCT provider FROM accounts ORDER BY provider").fetchall()]
+
+    def account_raw(self, account_id: str) -> dict:
+        r = self.conn.execute("SELECT raw FROM accounts WHERE id=?", (account_id,)).fetchone()
+        try:
+            return json.loads(r["raw"] or "{}") if r else {}
+        except ValueError:
+            return {}
+
+    def first_transaction_date(self, account_id: str) -> str | None:
+        r = self.conn.execute("SELECT MIN(posted_date) AS d FROM transactions WHERE account_id=? AND pending=0", (account_id,)).fetchone()
+        return r["d"] if r and r["d"] else None
+
+    def first_pull(self, provider: str) -> dict | None:
+        r = self.conn.execute("SELECT * FROM pulls WHERE provider=? AND errors='[]' ORDER BY id ASC LIMIT 1", (provider,)).fetchone()
+        return dict(r) if r else None
+
+    def legacy_cutoffs(self, primary: Iterable[str], legacy: Iterable[str]) -> dict[str, str | None]:
+        """{legacy account id: first date NOT to read from it}. An account aliased from a live one stops where the
+        live account's own history starts; the rest use meta legacy_cutoff:<id>, then the global legacy_cutoff,
+        else None (read everything, right for accounts that closed before the switch)."""
+        legacy = tuple(legacy)
+        if not legacy:
+            return {}
+        global_cut = self.get_meta("legacy_cutoff")
+        out: dict[str, str | None] = {}
+        for r in self.conn.execute(f"SELECT id FROM accounts WHERE provider IN ({','.join('?' * len(legacy))})", legacy).fetchall():
+            out[r["id"]] = self.get_meta(f"legacy_cutoff:{r['id']}", global_cut)
+        primary = tuple(primary)
+        for r in self.conn.execute(f"SELECT id, aliases FROM accounts WHERE provider IN ({','.join('?' * len(primary))})", primary).fetchall():
+            first = self.first_transaction_date(r["id"])
+            for alias in json.loads(r["aliases"] or "[]"):
+                if alias in out and first:
+                    out[alias] = first
+        return out
+
+    def rename_account(self, old_id: str, new_id: str, provider: str | None = None, is_manual: bool | None = None) -> None:
+        """Move an account and all its rows to a new id (rows already under new_id are replaced)."""
+        with self.conn:
+            self.conn.execute("UPDATE OR REPLACE accounts SET id=? WHERE id=?", (new_id, old_id))
+            if provider is not None:
+                self.conn.execute("UPDATE accounts SET provider=? WHERE id=?", (provider, new_id))
+            if is_manual is not None:
+                self.conn.execute("UPDATE accounts SET is_manual=? WHERE id=?", (int(is_manual), new_id))
+            for table in ("balances_daily", "transactions", "holdings"):
+                self.conn.execute(f"UPDATE OR REPLACE {table} SET account_id=? WHERE account_id=?", (new_id, old_id))
+            for r in self.conn.execute("SELECT id, aliases FROM accounts").fetchall():
+                aliases = json.loads(r["aliases"] or "[]")
+                if old_id in aliases:
+                    self.conn.execute("UPDATE accounts SET aliases=? WHERE id=?",
+                                      (json.dumps(sorted({new_id if a == old_id else a for a in aliases})), r["id"]))
+            self.conn.execute("DELETE FROM meta WHERE key=?", (f"legacy_cutoff:{old_id}",))
+
+    def adopt_account(self, old_id: str, spec: ManualAccountSpec) -> LedgerAccount:
+        """Give an imported legacy account a manual identity (manual:<key>) without losing its balances or
+        transactions. No balance is written: the history stays exactly as imported."""
+        new_id = f"manual:{spec.key}"
+        if new_id != old_id:
+            self.rename_account(old_id, new_id, provider="manual", is_manual=True)
+        ts = now_iso()
+        with self.conn:
+            self.conn.execute("UPDATE accounts SET name=?, account_type=?, subtype=?, classification=?, currency=?, last_seen=? WHERE id=?",
+                              (spec.name, spec.account_type, spec.subtype, spec.classification, spec.currency, ts, new_id))
+            self.conn.execute(
+                """INSERT INTO manual_accounts(id, key, name, entity, account_type, subtype, classification, currency, notes, created_at, updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET name=excluded.name, entity=excluded.entity, account_type=excluded.account_type,
+                        subtype=excluded.subtype, classification=excluded.classification, updated_at=excluded.updated_at""",
+                (new_id, spec.key, spec.name, spec.entity, spec.account_type, spec.subtype, spec.classification, spec.currency,
+                 spec.notes, ts, ts))
+        return next(a for a in self.accounts(providers=("manual",)) if a.id == new_id)
 
     # ---- holdings
     def upsert_holdings(self, account_id: str, on: str, holdings: list[dict]) -> int:

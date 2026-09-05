@@ -1,7 +1,7 @@
 [project]
 name = "focos"
-version = "0.1.0"
-description = "Family Office Chief Of Staff: Robinhood + Sure ledger + scheduled Claude Code briefs"
+version = "0.2.0"
+description = "Family Office Chief Of Staff: bank ledger, brokerage holdings, and scheduled AI briefs for a household"
 requires-python = ">=3.13"
 dependencies = [
     "pandas>=3.0",

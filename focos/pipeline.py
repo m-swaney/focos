@@ -89,7 +89,7 @@ def run(mode: str, date: str | None = None, heavy: bool | None = None, bump: boo
         "date": date,
         "alerts": alerts_mod.build(cur, outputs["portfolio.json"] if has_holdings else {}, settings.profile_v2(),
                                    outputs["catalysts.json"], history, outputs.get("tax_lots.json") if has_holdings else None,
-                                   sure_ok=ledger["ok"], consolidated=outputs["consolidated.json"]) + token_alerts,
+                                   ledger_ok=ledger["ok"], consolidated=outputs["consolidated.json"]) + token_alerts,
         "tokens": tokens_mod.expiries(),
     }
     if bump:

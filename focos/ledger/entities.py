@@ -1,7 +1,7 @@
 """Account -> entity mapping and per-entity balance sheets.
 
 `HOUSEHOLD` ("personal") is the reserved entity every install has; anything else is a business, trust,
-or other unit. Ledger account ids may carry a provider prefix ("sure:<uuid>", "simplefin:<id>"); matching
+or other unit. Ledger account ids carry a provider prefix ("simplefin:<id>", "mercury:<id>", "manual:<key>"); matching
 ignores the prefix so a config written for one provider keeps working after a migration.
 """
 from __future__ import annotations
@@ -134,3 +134,24 @@ def balance_sheets(accounts: list[dict], entity_of: dict[str, str], broker_total
     }
     consolidated["net_worth"] = consolidated["assets"] - consolidated["liabilities"]
     return {"entities": sheets, "consolidated": consolidated, "unmapped_accounts": unmapped}
+
+
+def add_account_id(entity_key: str, account_id: str, replace: str | None = None) -> None:
+    """Map account_id to entity_key in entities.yml (removing it from other entities, and dropping `replace`,
+    an old id it supersedes, everywhere)."""
+    from ..config import writer
+
+    doc = settings.entities_v2()
+    ents = doc.setdefault("entities", {})
+    if entity_key not in ents:
+        entity_key = HOUSEHOLD if HOUSEHOLD in ents else next(iter(ents), HOUSEHOLD)
+        ents.setdefault(entity_key, {"label": "Personal", "kind": "household", "account_ids": []})
+    for key, spec in ents.items():
+        ids = [i for i in (spec.get("account_ids") or []) if not (replace and _bare(i) == _bare(replace))]
+        if key != entity_key:
+            ids = [i for i in ids if i != account_id]
+        spec["account_ids"] = ids
+    if account_id not in ents[entity_key]["account_ids"]:
+        ents[entity_key]["account_ids"].append(account_id)
+    writer.write_file("entities.yml", doc)
+    settings.reset()

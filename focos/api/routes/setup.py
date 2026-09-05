@@ -18,8 +18,8 @@ def step_status() -> dict[str, str]:
     cfg = settings.focos()
     ai_ok, _ = key_status(str((cfg.get("ai") or {}).get("provider") or "anthropic"))
     ledger = (cfg.get("ledger") or {}).get("provider")
-    ledger_done = (ledger == "simplefin" and bool(os.environ.get("SIMPLEFIN_ACCESS_URL"))) or \
-                  (ledger == "sure" and bool(os.environ.get("SURE_API_KEY_RW") or os.environ.get("SURE_API_KEY_RO"))) or ledger == "none"
+    ledger_done = (ledger == "simplefin" and bool(os.environ.get("SIMPLEFIN_ACCESS_URL") or os.environ.get("MERCURY_TOKEN"))) \
+        or ledger == "none"
     ents = settings.entities_v2().get("entities") or {}
     accounts_done = any((e.get("account_ids") for e in ents.values())) or bool(settings.brokerage()) or ledger == "none"
     holdings = (cfg.get("holdings") or {}).get("source") or "none"

@@ -27,22 +27,15 @@ def _dump(path: Path, header: str, data: dict) -> None:
 
 def _infer_focos_yml(home: Path, accounts: dict) -> dict:
     brokerage = accounts.get("brokerage") or []
-    has_sure = bool(os.environ.get("SURE_API_KEY_RW") or os.environ.get("SURE_API_KEY_RO")
-                    or any(str(a.get("ledger_account_id") or "").startswith("sure:") for a in brokerage)
-                    or (home / "sure" / "compose.yml").exists())
-    out = {
+    return {
         "version": 1,
         "home_label": "Household",
-        "ledger": {"provider": "sure" if has_sure else "none", "refresh_min_hours": 20, "history_days_initial": 365},
+        "ledger": {"provider": "simplefin" if os.environ.get("SIMPLEFIN_ACCESS_URL") else "none",
+                   "refresh_min_hours": 20, "history_days_initial": 365},
         "holdings": {"source": "robinhood_mcp" if any(a.get("source") == "robinhood_mcp" for a in brokerage) else "none"},
         "ai": {"mode": "agent", "provider": "anthropic"},
         "agent": {"claude_cli": "auto", "sandbox_enabled": any(a.get("role") == "sandbox" for a in brokerage)},
     }
-    if has_sure:
-        out["ledger"]["sure"] = {"api_url": os.environ.get("SURE_API_URL") or "http://127.0.0.1:3000",
-                                 "autostart_docker": (home / "sure" / "compose.yml").exists(),
-                                 "compose_dir": "sure" if (home / "sure" / "compose.yml").exists() else None}
-    return out
 
 
 @register(1, 2)

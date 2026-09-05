@@ -44,28 +44,35 @@ def simplefin_claim(body: Claim):
     return {"ok": res.ok, "pull": res.model_dump(), **_accounts_payload()}
 
 
-class SureConfigure(BaseModel):
-    api_url: str = "http://127.0.0.1:3000"
-    api_key_rw: str | None = None
-    api_key_ro: str | None = None
+class MercuryConfigure(BaseModel):
+    token: str
 
 
-@router.post("/sure/configure")
-def sure_configure(body: SureConfigure):
-    writer.set_env("SURE_API_URL", body.api_url.strip())
-    if body.api_key_rw:
-        writer.set_env("SURE_API_KEY_RW", body.api_key_rw.strip())
-    if body.api_key_ro:
-        writer.set_env("SURE_API_KEY_RO", body.api_key_ro.strip())
+@router.post("/mercury/configure")
+def mercury_configure(body: MercuryConfigure):
+    """Direct Mercury feed for business accounts SimpleFIN does not carry. Validates the token before saving."""
+    from ... import paths
+    from ...ledger.feeds.mercury import ENV_TOKEN, MercuryClient, MercuryFeed
+    from ...ledger.providers.sqlite_store import SQLiteStore
+
+    token = body.token.strip()
+    try:
+        n = len(MercuryClient(token).accounts())
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:300]}
+    writer.set_env(ENV_TOKEN, token)
     ledger = dict(settings.focos().get("ledger") or {})
-    ledger["provider"] = "sure"
-    ledger.setdefault("sure", {})["api_url"] = body.api_url.strip()
+    if ledger.get("provider") != "simplefin":
+        ledger["provider"] = "simplefin"
+    ledger["mercury"] = {"enabled": True}
     writer.write_section("focos.yml", "ledger", ledger)
-    return {"ok": True, **_accounts_payload()}
+    settings.reset()
+    res = MercuryFeed(SQLiteStore(paths.LEDGER_DB), token=token).pull(_date.today(), force=True)
+    return {"ok": res.ok, "mercury_accounts": n, "pull": res.model_dump(), **_accounts_payload()}
 
 
 class SetProvider(BaseModel):
-    provider: str  # simplefin | sure | none
+    provider: str  # simplefin | none
 
 
 @router.post("/provider")

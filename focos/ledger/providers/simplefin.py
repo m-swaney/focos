@@ -1,4 +1,5 @@
-"""SimpleFIN Bridge (https://bridge.simplefin.org) as the default ledger: one setup token, no Docker.
+"""SimpleFIN Bridge (https://bridge.simplefin.org) as the default ledger: one setup token, no Docker. Extra
+feeds (focos.ledger.feeds, e.g. Mercury) write into the same SQLite store and are pulled by the same refresh().
 
 Protocol (https://www.simplefin.org/protocol.html): a setup token is the base64 of a claim URL; POSTing to it
 once returns an access URL that embeds credentials. GET <access_url>/accounts?start-date=<unix>&end-date=<unix>
@@ -23,6 +24,8 @@ from .sqlite_store import SQLiteStore
 
 ENV_ACCESS_URL = "SIMPLEFIN_ACCESS_URL"
 PROVIDER = "simplefin"
+PRIMARY_PROVIDERS = ("simplefin", "mercury")   # live feeds writing into the store
+MANUAL_PROVIDER = "manual"
 
 
 # ---------------------------------------------------------------- parsing helpers
@@ -156,12 +159,22 @@ class SimpleFINClient:
 
 
 # ---------------------------------------------------------------- provider
+def merge_results(results: list[PullResult]) -> PullResult:
+    """One PullResult for several feeds: ok only if every feed was ok, skipped only if every feed skipped."""
+    starts = [r.start for r in results if r.start]
+    ends = [r.end for r in results if r.end]
+    return PullResult(ok=all(r.ok for r in results), skipped=all(r.skipped for r in results),
+                      accounts=sum(r.accounts for r in results), transactions_new=sum(r.transactions_new for r in results),
+                      transactions_updated=sum(r.transactions_updated for r in results), holdings=sum(r.holdings for r in results),
+                      errors=[e for r in results for e in r.errors], start=min(starts) if starts else None, end=max(ends) if ends else None)
+
+
 class SimpleFINProvider:
     name = PROVIDER
     refreshes_synchronously = True
 
     def __init__(self, store: SQLiteStore | None = None, fetcher: Callable[[date, date, bool], dict] | None = None,
-                 access_url: str | None = None):
+                 access_url: str | None = None, feeds: list | None = None):
         import os
 
         self.store = store or SQLiteStore(paths.LEDGER_DB)
@@ -170,23 +183,31 @@ class SimpleFINProvider:
         cfg = settings.focos().get("ledger") or {}
         self.refresh_min_hours = float(cfg.get("refresh_min_hours") or 20)
         self.history_days_initial = int(cfg.get("history_days_initial") or 365)
+        if feeds is None:
+            from ..feeds import configured_feeds
+            feeds = configured_feeds(self.store)
+        self.feeds = feeds
 
     # -- health / status
     def health(self) -> ProviderHealth:
-        if not self.access_url:
-            return ProviderHealth(ok=None, reason="SIMPLEFIN_ACCESS_URL is not set; paste a SimpleFIN setup token in Setup")
-        last = self.store.last_pull(self.name, ok_only=False)
-        if last and last.get("errors") not in (None, "[]") and self.store.last_pull(self.name) is None:
-            return ProviderHealth(ok=False, reason=f"every pull so far failed: {last['errors'][:200]}")
+        if not self.access_url and not self.feeds:
+            return ProviderHealth(ok=None, reason="no bank feed configured; paste a SimpleFIN setup token (or a Mercury token) in Setup")
+        if self.access_url:
+            last = self.store.last_pull(self.name, ok_only=False)
+            if last and last.get("errors") not in (None, "[]") and self.store.last_pull(self.name) is None:
+                return ProviderHealth(ok=False, reason=f"every pull so far failed: {last['errors'][:200]}")
         return ProviderHealth(ok=True)
 
+    def feed_names(self) -> list[str]:
+        return ([self.name] if self.access_url else []) + [f.name for f in self.feeds]
+
     def sync_status(self) -> SyncStatus:
-        ok = self.store.last_pull(self.name)
-        bad = self.store.last_pull(self.name, ok_only=False)
-        return SyncStatus(provider=self.name, last_success=ok["ts"] if ok else None,
-                          last_error=(bad["errors"] if bad and bad.get("errors") not in (None, "[]") else None),
-                          accounts=len(self.store.accounts(providers=(self.name,))),
-                          transactions_window_days=95, detail={"counts": self.store.counts()})
+        oks = [p["ts"] for n in self.feed_names() if (p := self.store.last_pull(n))]
+        bads = [f"{n}: {p['errors'][:200]}" for n in self.feed_names()
+                if (p := self.store.last_pull(n, ok_only=False)) and p.get("errors") not in (None, "[]")]
+        return SyncStatus(provider=self.name, last_success=max(oks) if oks else None, last_error="; ".join(bads) or None,
+                          accounts=len(self.store.accounts(providers=PRIMARY_PROVIDERS)),
+                          transactions_window_days=95, detail={"counts": self.store.counts(), "feeds": self.feed_names()})
 
     # -- pull
     def _window(self, asof: date, force: bool) -> tuple[date, date]:
@@ -198,8 +219,16 @@ class SimpleFINProvider:
         return start, asof
 
     def refresh(self, asof: date, force: bool = False) -> PullResult:
-        if not self.access_url:
+        results = []
+        if self.access_url:
+            results.append(self._refresh_simplefin(asof, force))
+        for feed in self.feeds:
+            results.append(feed.pull(asof, force=force))
+        if not results:
             return PullResult(ok=False, errors=[f"{ENV_ACCESS_URL} is not set"])
+        return merge_results(results)
+
+    def _refresh_simplefin(self, asof: date, force: bool = False) -> PullResult:
         age = self.store.last_pull_age_hours(self.name)
         if not force and age is not None and age < self.refresh_min_hours:
             return PullResult(ok=True, skipped=True, accounts=len(self.store.accounts(providers=(self.name,))))
@@ -242,14 +271,16 @@ class SimpleFINProvider:
 
     # -- reads
     def accounts(self, include_manual: bool = True) -> list[LedgerAccount]:
-        provs = (self.name, "manual") if include_manual else (self.name,)
+        provs = (*PRIMARY_PROVIDERS, MANUAL_PROVIDER) if include_manual else PRIMARY_PROVIDERS
         return self.store.accounts(providers=provs)
 
     def balances(self, start: date, end: date, account_ids: list[str] | None = None) -> list[BalancePoint]:
         return self.store.balances(start, end, account_ids)
 
     def transactions(self, start: date, end: date, account_ids: list[str] | None = None) -> list[Transaction]:
-        return self.store.transactions(start, end, account_ids)
+        legacy = [p for p in self.store.providers_present() if p not in PRIMARY_PROVIDERS and p != MANUAL_PROVIDER]
+        return self.store.transactions(start, end, account_ids, legacy_providers=legacy,
+                                       legacy_before=self.store.legacy_cutoffs(PRIMARY_PROVIDERS, legacy) if legacy else None)
 
     def holdings(self, asof: date | None = None) -> list[Holding]:
         return self.store.holdings(asof)
@@ -265,7 +296,7 @@ class SimpleFINProvider:
         self.store.upsert_balance(account_id, on.isoformat(), balance, source="manual")
 
     def mirror_broker_value(self, account_id: str, on: date, amount: float) -> bool:
-        if not any(a.id == account_id for a in self.store.accounts()):
+        if not any(a.id == account_id for a in self.accounts()):
             return False
         self.store.upsert_balance(account_id, on.isoformat(), amount, source="broker")
         return True

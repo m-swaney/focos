@@ -17,6 +17,9 @@ DAY_TAGS = {"mon": "Monday", "tue": "Tuesday", "wed": "Wednesday", "thu": "Thurs
 MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 
 
+LEGACY_TASK_NAMES = ("FOCOS Daily", "FOCOS Weekly", "FOCOS Monthly", "FOCOS Dashboard")  # pre-1.0 PowerShell tasks
+
+
 def task_name(job_name: str) -> str:
     return f"{FOLDER}\\{job_name}"
 
@@ -80,7 +83,19 @@ def _schtasks(*args: str) -> subprocess.CompletedProcess:
 class WindowsScheduler:
     platform = "windows"
 
+    def legacy_present(self) -> list[str]:
+        return [n for n in LEGACY_TASK_NAMES if _schtasks("/Query", "/TN", n).returncode == 0]
+
+    def remove_legacy(self) -> list[str]:
+        removed = []
+        for n in self.legacy_present():
+            _schtasks("/End", "/TN", n)
+            if _schtasks("/Delete", "/F", "/TN", n).returncode == 0:
+                removed.append(n)
+        return removed
+
     def install(self, jobs: list[Job]) -> list[JobStatus]:
+        self.remove_legacy()
         out = []
         for job in jobs:
             with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-16") as f:
@@ -99,7 +114,7 @@ class WindowsScheduler:
     def uninstall(self, names: list[str] | None = None) -> list[str]:
         from .base import JOB_NAMES
 
-        removed = []
+        removed = self.remove_legacy()
         for n in names or list(JOB_NAMES.values()):
             if _schtasks("/Delete", "/F", "/TN", task_name(n)).returncode == 0:
                 removed.append(n)

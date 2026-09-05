@@ -114,8 +114,8 @@ export interface Consolidated {
   cash_flow?: Partial<Record<"30d" | "90d", CashFlowWindow>>;
   personal_runway_months?: number | null;
   unmapped_accounts?: { id: string; name: string }[];
-  robinhood_in_sure?: boolean;
-  sure_sync?: { data?: { status?: string; completed_at?: string | null; failed_at?: string | null; error?: string | null } };
+  broker_in_ledger?: boolean;
+  ledger_sync?: { provider?: string; last_success?: string | null; last_error?: string | null; accounts?: number };
   pushed_valuations?: { account: AccountKey; amount: number; ok: boolean }[];
 }
 

@@ -46,7 +46,7 @@ def test_migrate_converts_and_validates(home: Path):
     goals = yaml.safe_load((home / "config" / "goals.yml").read_text())
     assert all("kind" in g for g in goals["goals"])
     focos_yml = yaml.safe_load((home / "config" / "focos.yml").read_text())
-    assert focos_yml["ledger"]["provider"] == "sure"          # sure ids were present
+    assert focos_yml["ledger"]["provider"] == "none"          # no SIMPLEFIN_ACCESS_URL in the environment
     assert focos_yml["holdings"]["source"] == "robinhood_mcp"
     assert focos_yml["ai"]["mode"] == "agent" and focos_yml["agent"]["sandbox_enabled"] is True
     assert (home / "state" / "snapshots" / "holdings" / "2026-01-01.json").exists()

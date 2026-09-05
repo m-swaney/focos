@@ -32,17 +32,20 @@ def _compile(pattern: str | None, where: str) -> None:
 
 
 # ---------------------------------------------------------------- focos.yml
-class SureSettings(_Lenient):
-    api_url: str = "http://127.0.0.1:3000"
-    autostart_docker: bool = False
-    compose_dir: str | None = None
+class MercurySettings(_Lenient):
+    enabled: bool | None = None        # None = on whenever MERCURY_TOKEN is set in .env
 
 
 class LedgerSettings(_Lenient):
-    provider: Literal["simplefin", "sure", "none"] = "simplefin"
+    provider: Literal["simplefin", "none"] = "simplefin"
     refresh_min_hours: float = 20
     history_days_initial: int = 365
-    sure: SureSettings = SureSettings()
+    mercury: MercurySettings = MercurySettings()
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def _retired_providers(cls, v: Any) -> Any:
+        return "none" if v == "sure" else v
 
 
 class HoldingsSettings(_Lenient):

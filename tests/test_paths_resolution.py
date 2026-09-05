@@ -83,7 +83,7 @@ def test_legacy_home_infers_agent_defaults(home: Path, monkeypatch):
     cfg = settings.focos()
     assert cfg["ai"]["mode"] == "agent"
     assert cfg["holdings"]["source"] == "robinhood_mcp"
-    assert cfg["ledger"]["provider"] == "sure"
+    assert cfg["ledger"]["provider"] == "none"  # no SIMPLEFIN_ACCESS_URL in the environment
     assert cfg["agent"]["sandbox_enabled"] is True
     (home / "config" / "focos.yml").write_text("ai: {mode: api}\n", encoding="utf-8")
     settings.reset()

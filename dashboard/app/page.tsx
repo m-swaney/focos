@@ -22,7 +22,7 @@ const OWNER: Record<string, string> = {
   emergency_fund: "/wealth",
   unmatched_transfers: "/wealth",
   unmapped_accounts: "/wealth",
-  sure_unavailable: "/wealth",
+  ledger_unavailable: "/wealth",
   concentration: "/portfolio",
   look_through: "/portfolio",
   sector: "/portfolio",
@@ -215,7 +215,7 @@ export default function Today() {
             <p className="text-[13px] leading-relaxed">{clean(br.summary_line)}</p>
           ) : (
             <Empty>
-              No brief yet. Run <code className="rounded-[3px] bg-panel-2 px-1">scripts\run_agent.ps1 -Mode daily</code>.
+              No brief yet. Run <code className="rounded-[3px] bg-panel-2 px-1">focos run --mode daily</code>.
             </Empty>
           )}
           {br ? (
@@ -302,7 +302,7 @@ export default function Today() {
             </ul>
           ) : (
             <div className="px-4">
-              <Empty>Accounts appear once the Sure ledger is connected.</Empty>
+              <Empty>Accounts appear once a bank feed is connected.</Empty>
             </div>
           )}
         </Card>

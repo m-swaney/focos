@@ -92,7 +92,7 @@ def focos() -> dict[str, Any]:
 
 
 def _legacy_focos_defaults() -> dict[str, Any]:
-    """A pre-portability home has no focos.yml: infer agent mode, the Robinhood snapshot, and Sure from what
+    """A pre-portability home has no focos.yml: infer agent mode, the Robinhood snapshot, and the ledger from what
     accounts.yml and .env say (same inference `focos migrate` writes down)."""
     acc = _load_yaml("accounts.yml")
     if not acc or "robinhood" not in acc:
@@ -235,7 +235,7 @@ def entities_v2() -> dict[str, Any]:
 
 def profile_v2() -> dict[str, Any]:
     from .config.compat import profile_v2 as _p
-    return _p(profile())
+    return _p(profile(), entities_v2())
 
 
 def goals_v2() -> dict[str, Any]:

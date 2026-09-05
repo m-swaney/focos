@@ -1,6 +1,6 @@
 import { GroupedBarChart, type BarPoint } from "@/components/charts/GroupedBarChart";
 import { Sparkline } from "@/components/charts/Sparkline";
-import { Empty, EntityDot, EntityTag, Figure, FigureStrip, Note, PageHeader, Panel, Section, Severity, TextLink } from "@/components/ui";
+import { Empty, EntityDot, EntityTag, Figure, FigureStrip, Note, PageHeader, Panel, Section, Severity } from "@/components/ui";
 import { ShowMore } from "@/components/ui/ShowMore";
 import { consolidated, entitiesData, plan, properties } from "@/lib/data/latest";
 import { series } from "@/lib/data/series";
@@ -28,7 +28,7 @@ export default function Wealth() {
       <>
         <PageHeader title="Wealth" />
         <Empty>
-          The Sure ledger is not available{cons?.reason ? `: ${cons.reason}` : ""}. Start it with <code className="rounded bg-panel-2 px-1">scripts\sure_up.ps1</code> and run the daily pipeline.
+          The bank ledger is not available{cons?.reason ? `: ${cons.reason}` : ""}. Connect a feed in Setup and run the daily pipeline.
         </Empty>
       </>
     );
@@ -41,7 +41,7 @@ export default function Wealth() {
   const cf30 = cons.cash_flow?.["30d"];
   const flows = cf90?.inter_entity_flows ?? [];
   const unmatched = cf30?.unmatched ?? [];
-  const sync = cons.sure_sync?.data;
+  const sync = cons.ledger_sync;
   const pushed = cons.pushed_valuations ?? [];
 
   return (
@@ -162,7 +162,7 @@ export default function Wealth() {
         {ents ? <AccountsByEntity entityKeys={entityKeys} data={ents.entities} /> : <Empty>Account detail arrives with the next daily run.</Empty>}
         {cons.unmapped_accounts?.length ? (
           <Note tone="warn">
-            Unmapped Sure accounts: {cons.unmapped_accounts.map((a) => a.name).join(", ")}. Add them to config/entities.yml.
+            Unmapped ledger accounts: {cons.unmapped_accounts.map((a) => a.name).join(", ")}. Add them to config/entities.yml.
           </Note>
         ) : null}
       </Section>
@@ -215,12 +215,9 @@ export default function Wealth() {
       </div>
 
       <p className="mt-4 text-[11px] text-muted">
-        Sure ledger sync {sync?.status ?? "unknown"}
-        {sync?.completed_at ? ` at ${dateTime(sync.completed_at)}` : ""}.{" "}
-        {pushed.length ? `Robinhood valuations pushed ${pushed.filter((p) => p.ok).length} of ${pushed.length} (${pushed.map((p) => accountLabel(p.account)).join(", ")}).` : ""}{" "}
-        <TextLink href="http://127.0.0.1:3000" external>
-          Open Sure
-        </TextLink>
+        Ledger ({sync?.provider ?? "feed"}) last synced {sync?.last_success ? dateTime(sync.last_success) : "never"}
+        {sync?.last_error ? ` (last error: ${sync.last_error})` : ""}.{" "}
+        {pushed.length ? `Brokerage values mirrored ${pushed.filter((p) => p.ok).length} of ${pushed.length} (${pushed.map((p) => accountLabel(p.account)).join(", ")}).` : ""}
       </p>
     </>
   );

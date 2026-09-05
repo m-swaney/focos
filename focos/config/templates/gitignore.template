@@ -8,8 +8,6 @@ state/backups/
 state/diagnostics-*.zip
 reports/tearsheets/
 agent/
-sure/.env
-sure/backups/
 __pycache__/
 .DS_Store
 Thumbs.db

@@ -39,11 +39,11 @@ dashboard/out/
 .env
 .env.*
 !.env.example
-config/
-state/
-reports/
-data/
-sure/
+/config/
+/state/
+/reports/
+/data/
+/sure/
 agent/settings.headless.json
 agent/mcp.json
 agent/system.rendered.md

@@ -4,9 +4,11 @@ version: 1
 home_label: "Our household"
 
 ledger:
-  provider: simplefin            # simplefin | sure | none
+  provider: simplefin            # simplefin | none
   refresh_min_hours: 20          # do not re-pull bank data more often than this
   history_days_initial: 365      # how far back to ask on the first pull (banks usually return ~90 days)
+  mercury:
+    enabled: null                # null = on when MERCURY_TOKEN is set in .env (Mercury business banking read directly)
 
 holdings:
   source: none                   # robinhood_mcp | simplefin_holdings | csv | none

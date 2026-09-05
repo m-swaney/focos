@@ -122,12 +122,9 @@ export function StatusPopover({ id, compact = false }: { id: string; compact?: b
 
           <div className="mt-4 border-t border-hairline pt-3 text-[11px] text-secondary">
             <div className="mb-1.5">
-              Manual run <code className="rounded-[3px] bg-panel-2 px-1.5 py-0.5 text-ink">scripts\run_agent.ps1 -Mode daily</code>
+              Manual run <code className="rounded-[3px] bg-panel-2 px-1.5 py-0.5 text-ink">focos run --mode daily</code>
             </div>
-            <div className="mb-2 text-muted">Scheduled weekdays 4:35 PM, Sundays 6:00 PM, monthly on the 1st at 7:00 PM.</div>
-            <a href="http://127.0.0.1:3000" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
-              Open Sure ledger <Icon name="external" size={11} />
-            </a>
+            <div className="text-muted">Scheduled runs are managed in Setup → Schedule.</div>
           </div>
         </div>
       </div>

@@ -138,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
         print("private-scan: clean")
         return 0
     for path, n, label, masked in hits:
-        print(f"{path}:{n}: {label}: {masked}")
+        print(f"{path}:{n}: {label}: {masked}".encode("ascii", "backslashreplace").decode("ascii"))
     print(f"private-scan: {len(hits)} hit(s)")
     return 1
 
