@@ -65,3 +65,23 @@ def test_missing_quotes_degrades_instead_of_failing():
     p2 = {"accounts": [], "notes": "x"}
     ensure_quotes(p2)
     assert p2["quotes"] == [] and p2["notes"].startswith("x; ")
+
+
+def test_news_keyed_by_symbol_is_flattened():
+    from focos.holdings.robinhood_mcp import normalize_snapshot
+    from focos.sources import robinhood_snapshot as rh
+
+    payload = {"accounts": [], "quotes": [], "notes": ["a", "b"],
+               "news": {"NVDA": [{"title": "t1", "publisher": "Benzinga"}, {"title": "t2"}], "SPY": {"title": "t3"}},
+               "earnings": {"NVDA": [{"date": "2026-09-10"}]}}
+    normalize_snapshot(payload)
+    assert rh.validate(payload) == []
+    assert [n["symbol"] for n in payload["news"]] == ["NVDA", "NVDA", "SPY"] and payload["news"][0]["source"] == "Benzinga"
+    assert payload["earnings"] == [{"symbol": "NVDA", "date": "2026-09-10"}] and payload["notes"] == "a; b"
+
+
+def test_snapshot_prompt_includes_schema(initialized_home):
+    from focos.brief import prompts
+
+    text = prompts.render("snapshot", "2026-03-01", run_mode="daily")
+    assert '"title": "RobinhoodSnapshot"' in text and text.rstrip().endswith("before or after.")

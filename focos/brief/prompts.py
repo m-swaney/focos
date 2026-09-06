@@ -24,6 +24,16 @@ API_RESULT_CONTRACT = ("\n\nOutput format: first the complete markdown brief (H2
 SNAPSHOT_SUFFIX = "\n\nReturn ONLY the JSON object. No prose, no markdown fences, no commentary before or after."
 
 
+def snapshot_schema_text() -> str:
+    """The schema the snapshot must validate against, inlined so the model never has to guess key names or
+    shapes (news is a flat array with a symbol per item, notes is one string, quotes is an array...)."""
+    p = paths.AGENT / "schemas" / "snapshot.schema.json"
+    if not p.exists():
+        return ""
+    return ("\n\nThe JSON object MUST validate against this JSON Schema exactly (same key names, arrays where it "
+            "says array, one string for notes):\n```json\n" + p.read_text(encoding="utf-8").strip() + "\n```")
+
+
 def account_names() -> str:
     return ", ".join(f"{a['key']} ({a.get('label') or a['key']}, {a.get('role')})" for a in settings.brokerage()) or "(none configured)"
 
@@ -57,7 +67,7 @@ def render(template: str, date: str, run_id: str = "manual", run_mode: str | Non
     text = render_placeholders(text, date=date, run_id=run_id, prev_brief=previous_brief(run_mode, date),
                                week=week_label(date), run_mode=run_mode)
     if template == "snapshot":
-        return text + SNAPSHOT_SUFFIX
+        return text + snapshot_schema_text() + SNAPSHOT_SUFFIX
     return text + (API_RESULT_CONTRACT if variant == "api" else RESULT_CONTRACT)
 
 

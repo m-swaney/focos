@@ -48,8 +48,7 @@ class RobinhoodMCPSource:
         if meta["is_error"]:
             raise SourceError(str(result.get("result") or result.get("error") or meta.get("subtype") or "claude error")[:500])
         payload = claude_io.extract_json(result.get("result") or "")
-        normalize_crypto_keys(payload)
-        ensure_quotes(payload)
+        normalize_snapshot(payload)
         errors = rh.validate(payload)
         if errors:
             raise SourceError("schema: " + "; ".join(errors[:5]))
@@ -61,6 +60,33 @@ class RobinhoodMCPSource:
 
 
 CRYPTO_CODE_ALIASES = ("code", "asset", "symbol", "currency", "ticker")
+NEWS_SOURCE_ALIASES = ("source", "publisher", "provider")
+
+
+def normalize_snapshot(payload) -> None:
+    """Coerce the shapes the model drifts into back to the schema before validating: crypto code aliases,
+    missing quotes, notes as a list, news/earnings keyed by symbol instead of flat arrays."""
+    if not isinstance(payload, dict):
+        return
+    normalize_crypto_keys(payload)
+    ensure_quotes(payload)
+    for key in ("news", "earnings"):
+        val = payload.get(key)
+        if isinstance(val, dict):  # {"NVDA": [{...}, ...]} -> [{"symbol": "NVDA", ...}, ...]
+            flat = []
+            for sym, items in val.items():
+                for it in (items if isinstance(items, list) else [items]):
+                    if isinstance(it, dict):
+                        flat.append({"symbol": str(sym), **it})
+            payload[key] = flat
+        elif val is None:
+            payload[key] = []
+    for it in payload.get("news") or []:
+        if isinstance(it, dict) and "source" not in it:
+            for k in NEWS_SOURCE_ALIASES[1:]:
+                if k in it:
+                    it["source"] = it.pop(k)
+                    break
 
 
 def ensure_quotes(payload) -> None:
