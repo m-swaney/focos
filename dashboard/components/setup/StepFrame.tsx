@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useState, type MouseEvent, type ReactNode } from "react";
 
 export const STEPS: { href: string; key: string; label: string; blurb: string }[] = [
   { href: "/setup", key: "welcome", label: "Welcome", blurb: "where your data lives" },
@@ -31,6 +32,27 @@ export function StepFrame({ href, title, intro, children, nextLabel, canNext = t
   const i = stepIndex(href);
   const prev = i > 0 ? STEPS[i - 1] : null;
   const next = i >= 0 && i < STEPS.length - 1 ? STEPS[i + 1] : null;
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  // The click handler must cancel navigation synchronously: preventDefault after an await runs too late,
+  // so a save that fails would otherwise still advance the wizard. Navigate ourselves once onNext resolves.
+  const goNext = async (e: MouseEvent<HTMLAnchorElement>) => {
+    if (!next) return;
+    if (!canNext) {
+      e.preventDefault();
+      return;
+    }
+    if (!onNext || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    try {
+      const ok = await onNext();
+      if (ok !== false) router.push(next.href);
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <div className="max-w-[860px]">
       <div className="mb-4">
@@ -50,17 +72,12 @@ export function StepFrame({ href, title, intro, children, nextLabel, canNext = t
         {next ? (
           <Link
             href={next.href}
-            aria-disabled={!canNext}
-            onClick={async (e) => {
-              if (!canNext) { e.preventDefault(); return; }
-              if (onNext) {
-                const ok = await onNext();
-                if (ok === false) e.preventDefault();
-              }
-            }}
-            className={`rounded-[6px] border px-3 py-1.5 font-medium ${canNext ? "border-ink text-ink hover:bg-panel-2" : "border-hairline text-muted"}`}
+            aria-disabled={!canNext || saving}
+            aria-busy={saving}
+            onClick={goNext}
+            className={`rounded-[6px] border px-3 py-1.5 font-medium ${canNext ? "border-ink text-ink hover:bg-panel-2" : "border-hairline text-muted"} ${saving ? "opacity-50" : ""}`}
           >
-            {nextLabel ?? `Next: ${next.label}`} →
+            {saving ? "Saving…" : `${nextLabel ?? `Next: ${next.label}`} →`}
           </Link>
         ) : null}
       </div>

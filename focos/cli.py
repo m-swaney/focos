@@ -284,9 +284,11 @@ def service_install(start: bool = typer.Option(True, help="start it now")) -> No
 @service_app.command("uninstall")
 def service_uninstall() -> None:
     from . import scheduler
+    from .service.supervisor import reap_orphans
 
     sch = scheduler.current()
     sch.stop(scheduler.JOB_NAMES["service"])
+    reap_orphans()
     _echo({"removed": sch.uninstall([scheduler.JOB_NAMES["service"]])})
 
 
@@ -299,9 +301,13 @@ def service_start() -> None:
 
 @service_app.command("stop")
 def service_stop() -> None:
+    """Ending the scheduled task kills the supervisor but not the dashboard it spawned, so reap that too;
+    otherwise the port stays held and the next `serve` cannot bind."""
     from . import scheduler
+    from .service.supervisor import reap_orphans
 
-    _echo({"stopped": scheduler.current().stop(scheduler.JOB_NAMES["service"])})
+    stopped = scheduler.current().stop(scheduler.JOB_NAMES["service"])
+    _echo({"stopped": stopped, "reaped": reap_orphans()})
 
 
 @service_app.command("status")

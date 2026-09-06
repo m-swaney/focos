@@ -55,3 +55,17 @@ export function setupCompleted(): boolean {
     return false;
   }
 }
+
+/** The names focos seeds itself; kept in step with PLACEHOLDER_LABELS in focos/api/routes/setup.py. */
+const PLACEHOLDER_LABELS = ["Our household", "Household", "My household"];
+
+/** The household name from config/focos.yml (home_label); undefined when unset or still a seeded placeholder. */
+export function homeLabel(): string | undefined {
+  try {
+    const m = fs.readFileSync(path.join(CONFIG, "focos.yml"), "utf-8").match(/^home_label:\s*(.+)$/m);
+    const v = m?.[1]?.trim().replace(/^["']|["']$/g, "");
+    return !v || PLACEHOLDER_LABELS.includes(v) ? undefined : v;
+  } catch {
+    return undefined;
+  }
+}

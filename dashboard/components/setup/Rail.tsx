@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { SETUP_CHANGED, api } from "@/lib/api";
 import { STEPS } from "@/components/setup/StepFrame";
 import { Icon } from "@/components/ui/Icon";
 
@@ -16,14 +16,19 @@ export function Rail() {
   const [label, setLabel] = useState<string>("");
   useEffect(() => {
     let alive = true;
-    api<{ steps: Steps; home_label: string }>("/setup/status").then((r) => {
-      if (alive && r && !r.error) {
-        setSteps(r.steps ?? {});
-        setLabel(r.home_label ?? "");
-      }
-    });
+    const read = () =>
+      api<{ steps: Steps; home_label: string }>("/setup/status").then((r) => {
+        if (alive && r && !r.error) {
+          setSteps(r.steps ?? {});
+          setLabel(r.home_label ?? "");
+        }
+      });
+    read();
+    // Saving on a step marks it done, so re-read then too rather than only when the route changes.
+    window.addEventListener(SETUP_CHANGED, read);
     return () => {
       alive = false;
+      window.removeEventListener(SETUP_CHANGED, read);
     };
   }, [pathname]);
   return (

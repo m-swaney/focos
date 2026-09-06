@@ -40,6 +40,27 @@ def test_setup_status_and_label(client):
     assert client.get("/setup/status").json()["setup_completed_at"]
 
 
+def test_welcome_step_tracks_the_household_name(client):
+    """The rail draws a check per step key, so Welcome needs one or it can never look done."""
+    assert client.get("/setup/status").json()["steps"]["welcome"] == "todo"
+    client.post("/setup/label", json={"home_label": "My household"})  # the seeded placeholder does not count
+    assert client.get("/setup/status").json()["steps"]["welcome"] == "todo"
+    client.post("/setup/label", json={"home_label": "The Smiths"})
+    assert client.get("/setup/status").json()["steps"]["welcome"] == "done"
+
+
+def test_setup_complete_does_not_need_the_wizard_button(client, monkeypatch):
+    """A household that configured focos by hand should not be nagged forever by the setup banner."""
+    from focos.api.routes import setup as setup_routes
+
+    assert client.get("/setup/status").json()["setup_complete"] is False
+    monkeypatch.setattr(setup_routes, "step_status", lambda: {"welcome": "done", "ai": "done", "ledger": "done",
+                                                              "accounts": "done", "holdings": "skipped",
+                                                              "profile": "done", "schedule": "done",
+                                                              "first_run": "done"})
+    assert client.get("/setup/status").json()["setup_complete"] is True
+
+
 def test_ai_configure_writes_env_and_config(client, initialized_home: Path):
     r = client.post("/ai/configure", json={"provider": "openai", "model": "gpt-5.6-luna", "api_key": "sk-test-1234567890abcdefghij", "mode": "api"}).json()
     assert r["ok"] and r["key_ok"] and r["ai"]["provider"] == "openai" and r["ai"]["model"] == "gpt-5.6-luna"

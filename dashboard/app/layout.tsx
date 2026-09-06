@@ -5,6 +5,7 @@ import { FailureBanner } from "@/components/chrome/FailureBanner";
 import { SetupNudge } from "@/components/chrome/SetupNudge";
 import { setupCompleted } from "@/lib/data/paths";
 import { MobileHeader } from "@/components/chrome/MobileHeader";
+import { RefreshOnSetupChange } from "@/components/chrome/RefreshOnSetupChange";
 import { Sidebar } from "@/components/chrome/Sidebar";
 import { TabBar } from "@/components/chrome/TabBar";
 import { PAGE_COLORS, THEME_SCRIPT } from "@/lib/theme";
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="min-h-full">
+        <RefreshOnSetupChange />
         <div className="flex min-h-dvh">
           <Sidebar />
           <div className="min-w-0 flex-1">

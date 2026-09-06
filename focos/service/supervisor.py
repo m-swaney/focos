@@ -1,6 +1,9 @@
 """Supervise the Next.js dashboard (and, when installed, the local API) as child processes with restarts."""
 from __future__ import annotations
 
+import csv
+import io
+import json
 import logging
 import os
 import shutil
@@ -14,6 +17,60 @@ from pathlib import Path
 from .. import paths, settings
 
 log = logging.getLogger("focos.service")
+
+
+def _children_file() -> Path:
+    return paths.LOGS / "service-children.json"
+
+
+def _record(children: list["Child"]) -> None:
+    """Remember the child pids. Task Scheduler ends this process without running our cleanup, so the record is
+    the only way a later start can tell that the dashboard still holding the port is our own orphan."""
+    try:
+        paths.LOGS.mkdir(parents=True, exist_ok=True)
+        alive = [{"pid": c.proc.pid, "exe": c.argv[0]} for c in children if c.proc and c.alive()]
+        _children_file().write_text(json.dumps(alive), encoding="utf-8")
+    except OSError as e:
+        log.warning("could not record child pids: %s", e)
+
+
+def _image_name(pid: int) -> str | None:
+    """Image name of the running process, or None when nothing is running under that pid."""
+    try:
+        if sys.platform == "win32":
+            r = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
+                               capture_output=True, text=True, timeout=15)
+            row = next(csv.reader(io.StringIO(r.stdout)), None)
+            return row[0] if row and len(row) > 1 else None
+        r = subprocess.run(["ps", "-p", str(pid), "-o", "comm="], capture_output=True, text=True, timeout=15)
+        return Path(r.stdout.strip()).name or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def reap_orphans() -> list[int]:
+    """Kill dashboard children left behind by a previous supervisor that was killed rather than shut down.
+    A pid is only killed when it is still running the same executable we launched, so a recycled pid
+    belonging to something else is left alone. Returns the pids actually killed."""
+    try:
+        recorded = json.loads(_children_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    killed = []
+    for entry in recorded if isinstance(recorded, list) else []:
+        pid, exe = entry.get("pid"), entry.get("exe") or ""
+        if not isinstance(pid, int) or pid == os.getpid():
+            continue
+        if _image_name(pid) != Path(exe).name:
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed.append(pid)
+            log.warning("killed orphaned %s (pid %s) left by an earlier run", Path(exe).name, pid)
+        except OSError as e:
+            log.warning("could not kill orphaned pid %s: %s", pid, e)
+    _children_file().unlink(missing_ok=True)
+    return killed
 
 
 def node_exe() -> str | None:
@@ -117,12 +174,15 @@ def serve(with_dashboard: bool = True, with_api: bool = True, once: bool = False
             signal.signal(s, _sig)
         except (ValueError, OSError):
             pass
+    reap_orphans()  # a previous supervisor may have been killed without releasing the dashboard's port
     for c in children:
         c.start()
+    _record(children)
     if once:
         time.sleep(1)
         for c in children:
             c.stop()
+        _children_file().unlink(missing_ok=True)
         return 0
     try:
         while not stop.is_set():
@@ -134,8 +194,10 @@ def serve(with_dashboard: bool = True, with_api: bool = True, once: bool = False
                     stop.wait(backoff)
                     if not stop.is_set():
                         c.start()
+                        _record(children)
             stop.wait(2)
     finally:
         for c in children:
             c.stop()
+        _children_file().unlink(missing_ok=True)
     return 0
