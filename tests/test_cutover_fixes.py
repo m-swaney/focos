@@ -52,3 +52,15 @@ def test_crypto_code_aliases_normalized():
     normalize_crypto_keys(payload)
     assert [p["code"] for p in payload["accounts"][0]["crypto_positions"]] == ["BTC", "ETH", "SOL"]
     normalize_crypto_keys({"accounts": [{"crypto_positions": None}]})  # tolerant of missing lists
+
+
+def test_missing_quotes_degrades_instead_of_failing():
+    from focos.holdings.robinhood_mcp import ensure_quotes
+    from focos.sources import robinhood_snapshot as rh
+
+    payload = {"accounts": [], "notes": ["get_equity_quotes: batch of 21 exceeded the limit"]}
+    ensure_quotes(payload)
+    assert payload["quotes"] == [] and len(payload["notes"]) == 2 and rh.validate(payload) == []
+    p2 = {"accounts": [], "notes": "x"}
+    ensure_quotes(p2)
+    assert p2["quotes"] == [] and p2["notes"].startswith("x; ")

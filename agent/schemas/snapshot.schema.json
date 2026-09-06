@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "RobinhoodSnapshot",
   "type": "object",
-  "required": ["accounts", "quotes"],
+  "required": ["accounts"],
   "properties": {
     "accounts": {
       "type": "array",

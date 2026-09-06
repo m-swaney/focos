@@ -49,6 +49,7 @@ class RobinhoodMCPSource:
             raise SourceError(str(result.get("result") or result.get("error") or meta.get("subtype") or "claude error")[:500])
         payload = claude_io.extract_json(result.get("result") or "")
         normalize_crypto_keys(payload)
+        ensure_quotes(payload)
         errors = rh.validate(payload)
         if errors:
             raise SourceError("schema: " + "; ".join(errors[:5]))
@@ -60,6 +61,21 @@ class RobinhoodMCPSource:
 
 
 CRYPTO_CODE_ALIASES = ("code", "asset", "symbol", "currency", "ticker")
+
+
+def ensure_quotes(payload) -> None:
+    """A snapshot without quotes still has positions and portfolio totals; downstream valuation falls back to
+    Yahoo closes. Keep the run alive and say so in notes instead of failing the whole day."""
+    if not isinstance(payload, dict):
+        return
+    if not isinstance(payload.get("quotes"), list):
+        payload["quotes"] = []
+        note = "quotes missing from the snapshot; positions valued at Yahoo closes this run"
+        notes = payload.get("notes")
+        if isinstance(notes, list):
+            notes.append(note)
+        else:
+            payload["notes"] = (f"{notes}; " if notes else "") + note
 
 
 def normalize_crypto_keys(payload) -> None:
