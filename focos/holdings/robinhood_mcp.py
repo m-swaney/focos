@@ -48,6 +48,7 @@ class RobinhoodMCPSource:
         if meta["is_error"]:
             raise SourceError(str(result.get("result") or result.get("error") or meta.get("subtype") or "claude error")[:500])
         payload = claude_io.extract_json(result.get("result") or "")
+        normalize_crypto_keys(payload)
         errors = rh.validate(payload)
         if errors:
             raise SourceError("schema: " + "; ".join(errors[:5]))
@@ -56,3 +57,17 @@ class RobinhoodMCPSource:
         snap["source"] = self.name
         write_snapshot(snap)
         return snap
+
+
+CRYPTO_CODE_ALIASES = ("code", "asset", "symbol", "currency", "ticker")
+
+
+def normalize_crypto_keys(payload) -> None:
+    """The model sometimes labels a crypto position's code as asset/symbol/currency; the schema wants code."""
+    for acct in (payload.get("accounts") or []) if isinstance(payload, dict) else []:
+        for pos in acct.get("crypto_positions") or []:
+            if isinstance(pos, dict) and not pos.get("code"):
+                for k in CRYPTO_CODE_ALIASES[1:]:
+                    if pos.get(k):
+                        pos["code"] = str(pos[k]).upper()
+                        break

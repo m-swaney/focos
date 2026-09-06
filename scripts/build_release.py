@@ -24,6 +24,15 @@ def version() -> str:
     return m.group(1) if m else "0.0.0"
 
 
+def _skip(f: Path) -> bool:
+    """Skip caches and the dashboard's development node_modules, but keep the traced node_modules inside
+    .next/standalone: the standalone server needs them and the installer never runs npm."""
+    parts = set(f.parts)
+    if "node_modules" in parts and "standalone" in parts:
+        return bool((SKIP_PARTS - {"node_modules"}) & parts)
+    return bool(SKIP_PARTS & parts)
+
+
 def files():
     for d in INCLUDE_DIRS + DASH:
         p = ROOT / d
@@ -35,7 +44,7 @@ def files():
                 print(f"warning: {d} missing (dashboard not built)", file=sys.stderr)
             continue
         for f in p.rglob("*"):
-            if f.is_file() and not (SKIP_PARTS & set(f.parts)) and f.suffix != ".pyc":
+            if f.is_file() and not _skip(f) and f.suffix != ".pyc":
                 yield f
     for f in INCLUDE_FILES:
         if (ROOT / f).exists():

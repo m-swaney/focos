@@ -43,3 +43,12 @@ def test_apply_carries_legacy_types_onto_live_accounts(initialized_home, tmp_pat
     assert settings.entities_v2()["account_types"]["simplefin:ACT-CARD-1"]["classification"] == "liability"
     # idempotent, and confirmed types in entities.yml are never overridden
     assert link.apply(store, [], sf.PRIMARY_PROVIDERS)["types_carried"] == []
+
+
+def test_crypto_code_aliases_normalized():
+    from focos.holdings.robinhood_mcp import normalize_crypto_keys
+
+    payload = {"accounts": [{"crypto_positions": [{"asset": "btc", "quantity": 0.5}, {"code": "ETH", "quantity": 1}, {"symbol": "SOL", "quantity": 2}]}]}
+    normalize_crypto_keys(payload)
+    assert [p["code"] for p in payload["accounts"][0]["crypto_positions"]] == ["BTC", "ETH", "SOL"]
+    normalize_crypto_keys({"accounts": [{"crypto_positions": None}]})  # tolerant of missing lists
