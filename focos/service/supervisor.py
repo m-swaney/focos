@@ -54,9 +54,12 @@ def dashboard_command() -> tuple[list[str], Path] | None:
     return None
 
 
-def _env(port: int) -> dict[str, str]:
+def _env(port: int, host: str = "127.0.0.1") -> dict[str, str]:
+    """The dashboard binds to `host` (dashboard.host in focos.yml); the local API always stays on loopback and
+    is reached through the dashboard's server-side proxy, so opening the dashboard to a tailnet or LAN never
+    exposes the API or its token."""
     env = dict(os.environ)
-    env.update({"FOCOS_HOME": str(paths.HOME), "PORT": str(port), "HOSTNAME": "127.0.0.1", "NODE_ENV": "production"})
+    env.update({"FOCOS_HOME": str(paths.HOME), "PORT": str(port), "HOSTNAME": host or "127.0.0.1", "NODE_ENV": "production"})
     token = os.environ.get("FOCOS_DASH_TOKEN")
     if token:
         env["FOCOS_DASH_TOKEN"] = token
@@ -92,7 +95,8 @@ def serve(with_dashboard: bool = True, with_api: bool = True, once: bool = False
     if with_dashboard:
         cmd = dashboard_command()
         if cmd:
-            children.append(Child("dashboard", cmd[0], cmd[1], _env(int(cfg.get("port") or 3100))))
+            children.append(Child("dashboard", cmd[0], cmd[1], _env(int(cfg.get("port") or 3100), str(cfg.get("host") or "127.0.0.1"))))
+            log.info("dashboard: listening on %s:%s", cfg.get("host") or "127.0.0.1", cfg.get("port") or 3100)
         else:
             log.warning("dashboard: no build found under %s (run the installer or `npm run build`)", paths.APP / "dashboard")
     api_thread = None

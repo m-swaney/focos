@@ -41,3 +41,4 @@ git:
 dashboard:
   port: 3100
   api_port: 3101
+  host: 127.0.0.1                # 0.0.0.0 to open the dashboard to your phone over Tailscale or your LAN

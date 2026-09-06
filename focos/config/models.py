@@ -139,6 +139,7 @@ class GitSettings(_Lenient):
 class DashboardSettings(_Lenient):
     port: int = 3100
     api_port: int = 3101
+    host: str = "127.0.0.1"       # 0.0.0.0 (or a Tailscale/LAN address) to reach the dashboard from other devices
 
 
 class FocosSettings(_Lenient):

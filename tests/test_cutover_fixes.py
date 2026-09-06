@@ -99,3 +99,14 @@ def test_push_reports_instead_of_raising(initialized_home, monkeypatch):
     monkeypatch.setattr(git_ops.shutil, "which", lambda _: None)
     res = git_ops.push_origin(initialized_home, timeout=5)
     assert res["ok"] is False and "git not installed" in res["error"] and "dulwich:" in res["error"]
+
+
+def test_dashboard_host_setting(initialized_home):
+    from focos.config import writer
+    from focos.service import supervisor
+
+    assert supervisor._env(3100)["HOSTNAME"] == "127.0.0.1"
+    assert supervisor._env(3100, "0.0.0.0")["HOSTNAME"] == "0.0.0.0"
+    assert not writer.write_section("focos.yml", "dashboard", {"port": 3100, "api_port": 3101, "host": "0.0.0.0"})
+    settings.reset()
+    assert settings.focos()["dashboard"]["host"] == "0.0.0.0"
