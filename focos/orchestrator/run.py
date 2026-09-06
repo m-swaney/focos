@@ -36,6 +36,7 @@ class RunResult:
     ok: bool = True
     stages: dict = field(default_factory=dict)
     commit: str | None = None
+    push: dict | None = None
     log_file: str | None = None
 
 
@@ -183,6 +184,12 @@ def run(opts: RunOptions) -> RunResult:
                                             git_cfg.get("author_name"), git_cfg.get("author_email"),
                                             push=bool(git_cfg.get("push")))
             log.info("commit: %s", res.commit or "nothing to commit")
+            if git_cfg.get("push") and res.commit:
+                res.push = git_ops.last_push
+                if res.push and res.push.get("ok"):
+                    log.info("push: ok (%s)", res.push.get("method"))
+                else:
+                    log.warning("push failed: %s", (res.push or {}).get("error"))
         except Exception as e:  # noqa: BLE001
             log.warning("git step skipped: %s", e)
 

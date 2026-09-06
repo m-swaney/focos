@@ -85,3 +85,17 @@ def test_snapshot_prompt_includes_schema(initialized_home):
 
     text = prompts.render("snapshot", "2026-03-01", run_mode="daily")
     assert '"title": "RobinhoodSnapshot"' in text and text.rstrip().endswith("before or after.")
+
+
+def test_push_reports_instead_of_raising(initialized_home, monkeypatch):
+    from focos.orchestrator import git_ops
+
+    (initialized_home / "state" / "x.json").write_text("{}", encoding="utf-8")
+    assert git_ops.commit_run(initialized_home, "t", ("state",), push=True)
+    assert git_ops.last_push == {"ok": False, "method": None, "error": "no origin remote"}
+    # a remote that cannot be reached: system git fails, dulwich fails, the commit still stands
+    from dulwich import porcelain
+    porcelain.remote_add(str(initialized_home), "origin", "https://127.0.0.1:9/nobody/nothing.git")
+    monkeypatch.setattr(git_ops.shutil, "which", lambda _: None)
+    res = git_ops.push_origin(initialized_home, timeout=5)
+    assert res["ok"] is False and "git not installed" in res["error"] and "dulwich:" in res["error"]

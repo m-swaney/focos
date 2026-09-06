@@ -1,6 +1,9 @@
-"""Commit the data dir after a run using dulwich (no git binary required). Honors .gitignore."""
+"""Commit the data dir after a run using dulwich (no git binary required). Honors .gitignore. Pushing prefers
+the system git when present (it knows the credential manager); dulwich is the fallback."""
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 from dulwich import porcelain
@@ -88,12 +91,46 @@ def commit_run(home: Path, message: str, subpaths: tuple[str, ...] = DEFAULT_PAT
         return None
     author = _author(repo, author_name, author_email)
     sha = porcelain.commit(repo, message=message.encode("utf-8"), author=author, committer=author)
-    if push:
-        try:
-            porcelain.push(repo, "origin")
-        except Exception:  # no remote, no network: the local commit is what matters
-            pass
+    global last_push
+    last_push = push_origin(home) if push else None
     return sha.decode()[:7]
+
+
+last_push: dict | None = None
+
+
+def has_remote(home: Path, name: str = "origin") -> bool:
+    repo = open_repo(home)
+    if repo is None:
+        return False
+    try:
+        return f"remote \"{name}\"".encode() in repo.get_config().sections_bytes() if hasattr(repo.get_config(), "sections_bytes") \
+            else (b"remote", name.encode()) in repo.get_config().sections()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def push_origin(home: Path, timeout: int = 180) -> dict:
+    """Push HEAD to origin. System git first (credential manager, SSH agent), dulwich second. Never raises:
+    the local commit is what matters, the result says what happened."""
+    if not has_remote(home):
+        return {"ok": False, "method": None, "error": "no origin remote"}
+    git = shutil.which("git")
+    if git:
+        try:
+            r = subprocess.run([git, "-C", str(home), "push", "-q", "origin", "HEAD"], capture_output=True, text=True, timeout=timeout)
+            if r.returncode == 0:
+                return {"ok": True, "method": "git"}
+            err = (r.stderr or r.stdout).strip()[-300:]
+        except (OSError, subprocess.TimeoutExpired) as e:
+            err = str(e)[:300]
+    else:
+        err = "git not installed"
+    try:
+        porcelain.push(open_repo(home), "origin")
+        return {"ok": True, "method": "dulwich"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "method": "git+dulwich", "error": f"{err}; dulwich: {str(e)[:200]}"}
 
 
 def status_summary(home: Path) -> dict:
