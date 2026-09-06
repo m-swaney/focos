@@ -68,6 +68,8 @@ def ensure_quotes(payload) -> None:
     Yahoo closes. Keep the run alive and say so in notes instead of failing the whole day."""
     if not isinstance(payload, dict):
         return
+    if isinstance(payload.get("notes"), list):  # the schema wants one string; the model often writes a list
+        payload["notes"] = "; ".join(str(n) for n in payload["notes"] if n)
     if not isinstance(payload.get("quotes"), list):
         payload["quotes"] = []
         note = "quotes missing from the snapshot; positions valued at Yahoo closes this run"

@@ -60,7 +60,8 @@ def test_missing_quotes_degrades_instead_of_failing():
 
     payload = {"accounts": [], "notes": ["get_equity_quotes: batch of 21 exceeded the limit"]}
     ensure_quotes(payload)
-    assert payload["quotes"] == [] and len(payload["notes"]) == 2 and rh.validate(payload) == []
+    assert payload["quotes"] == [] and payload["notes"].startswith("get_equity_quotes") and "quotes missing" in payload["notes"]
+    assert rh.validate(payload) == []
     p2 = {"accounts": [], "notes": "x"}
     ensure_quotes(p2)
     assert p2["quotes"] == [] and p2["notes"].startswith("x; ")
