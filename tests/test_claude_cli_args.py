@@ -22,6 +22,33 @@ def test_stage_a_only_read_tools():
         assert t in deny
 
 
+def test_keepalive_args_single_read_tool(tmp_path: Path):
+    args = claude_cli.keepalive_args(A, model="haiku", budget_usd=0.25, mcp_config=tmp_path / "mcp.json", debug_file=tmp_path / "k.log")
+    assert _flag(args, "--allowedTools") == PREFIX + "get_accounts" and _flag(args, "--model") == "haiku"
+    assert _flag(args, "--max-budget-usd") == "0.25" and _flag(args, "--debug-file") == str(tmp_path / "k.log")
+    deny = _flag(args, "--disallowedTools").split(",")
+    for t in ("Bash", "Edit", "Write", PLACE, REVIEW, PREFIX + "cancel_equity_order"):
+        assert t in deny
+    assert "--debug-file" not in claude_cli.keepalive_args(A, model="haiku", budget_usd=0.25, mcp_config=tmp_path / "mcp.json")
+
+
+def test_run_reports_stderr_when_no_result(tmp_path: Path, monkeypatch):
+    import subprocess
+
+    def fake_run(cmd, **kw):
+        kw["stderr"].write(b"Error: 401 Unauthorized from robinhood-trading\n")
+        return subprocess.CompletedProcess(cmd, 1)
+
+    monkeypatch.setattr(claude_cli, "find_claude", lambda explicit="auto": "claude")
+    monkeypatch.setattr(claude_cli.subprocess, "run", fake_run)
+    try:
+        claude_cli.run("hi", ["-p"], log_path=tmp_path / "x.json", cwd=tmp_path)
+    except RuntimeError as e:
+        assert "401 Unauthorized" in str(e) and "exit 1" in str(e)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+
 def test_stage_c_scopes_and_trade_toggle(tmp_path: Path):
     settings_file = tmp_path / "settings.headless.json"
     settings_file.write_text("{}")
@@ -34,6 +61,7 @@ def test_stage_c_scopes_and_trade_toggle(tmp_path: Path):
     assert {"Read", "Glob", "Grep", "Write(reports/**)", "Edit(state/decisions.jsonl)", "Write(state/sandbox/proposals/**)",
             PREFIX + "get_equity_quotes"} <= set(allow_off)
     assert {"Write(config/**)", "Edit(focos/**)", "Bash", PREFIX + "cancel_equity_order"} <= set(deny_off)
+    assert "Write(state/updates/**)" in allow_off and {"Write(state/inbox.jsonl)", "Edit(state/changes.jsonl)"} <= set(deny_off)
     assert PLACE in deny_off and REVIEW in deny_off and PLACE not in allow_off
     assert PLACE in allow_on and REVIEW in allow_on and PLACE not in deny_on
     assert _flag(on, "--settings") == str(settings_file)

@@ -17,18 +17,15 @@ def _load() -> dict:
 def start(mode: str, run_id: str) -> None:
     s = _load()
     s[mode] = {"run_id": run_id, "started": _now(), "finished": None, "ok": None, "stage": "A",
-               "error": None, "cost_usd": 0.0, "stages": {}}
+               "error": None, "stages": {}}
     settings.write_json(paths.STATUS, s)
 
 
-def stage(mode: str, stage_name: str, ok: bool, error: str | None = None, cost_usd: float | None = None,
-          extra: dict | None = None) -> None:
+def stage(mode: str, stage_name: str, ok: bool, error: str | None = None, extra: dict | None = None) -> None:
     s = _load()
     entry = s.setdefault(mode, {})
     entry["stage"] = stage_name
     entry.setdefault("stages", {})[stage_name] = {"ok": ok, "error": error, "at": _now(), **(extra or {})}
-    if cost_usd:
-        entry["cost_usd"] = round(float(entry.get("cost_usd") or 0) + float(cost_usd), 4)
     if not ok:
         entry["ok"] = False
         entry["error"] = f"{stage_name}: {error}"

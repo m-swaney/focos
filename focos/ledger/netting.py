@@ -19,6 +19,8 @@ import re
 from collections import defaultdict
 from datetime import date
 
+from . import categories
+
 TRANSFERISH = re.compile(r"(TRANSFER|\bXFER\b|ZELLE|\bWIRE\b|VENMO|ROBINHOOD|MERCURY|OWNER DRAW|DISTRIBUTION|CAPITAL CONTRIB|"
                          r"BANK XFER|EXTERNAL WITHDRAWAL|^WITHDRAWAL$|CASH APP|APPLE CASH)", re.I)
 
@@ -45,8 +47,10 @@ def label_income(t: dict, labels_for_entity: list[dict]) -> str | None:
 
 def net(transactions: list[dict], entity_of: dict[str, str], rules: list[dict] | None = None,
         corridors: set[tuple[str, str]] | None = None, window_days: int = 4,
-        income_labels: dict[str, list[dict]] | None = None, ignore_patterns: list[str] | None = None) -> dict:
+        income_labels: dict[str, list[dict]] | None = None, ignore_patterns: list[str] | None = None,
+        entity_kinds: dict[str, str] | None = None) -> dict:
     rules = rules or []
+    entity_kinds = entity_kinds or {}
     corridors = corridors or set()
     income_labels = income_labels or {}
     ignore_re = re.compile("|".join(f"(?:{p})" for p in ignore_patterns), re.I) if ignore_patterns else None
@@ -153,7 +157,8 @@ def net(transactions: list[dict], entity_of: dict[str, str], rules: list[dict] |
     per_entity: dict[str, dict] = defaultdict(lambda: {"income": 0.0, "expense": 0.0, "net": 0.0,
                                                        "inter_in": 0.0, "inter_out": 0.0, "one_legged_out": 0.0,
                                                        "one_legged_in": 0.0, "n_transactions": 0, "n_transfers": 0,
-                                                       "income_by_label": {}, "transfers_by_class": {}})
+                                                       "income_by_label": {}, "transfers_by_class": {}, "expense_by_category": {},
+                                                       "core_expense": 0.0, "discretionary_expense": 0.0, "uncategorized_expense": 0.0})
     for t in txs:
         e = per_entity[t["entity"]]
         if t["kind"] == "normal":
@@ -165,6 +170,9 @@ def net(transactions: list[dict], entity_of: dict[str, str], rules: list[dict] |
                 e["income_by_label"][lab] = e["income_by_label"].get(lab, 0.0) + t["amount"]
             else:
                 e["expense"] += -t["amount"]
+                cat = t.get("category") or categories.UNCATEGORIZED
+                e["expense_by_category"][cat] = e["expense_by_category"].get(cat, 0.0) + (-t["amount"])
+                e[f"{categories.bucket(cat, entity_kinds.get(t['entity']))}_expense"] += -t["amount"]
         else:
             e["n_transfers"] += 1
             tc = t["transfer_class"] or "transfer"
@@ -182,8 +190,16 @@ def net(transactions: list[dict], entity_of: dict[str, str], rules: list[dict] |
     for e in per_entity.values():
         e["net"] = e["income"] - e["expense"]
     consolidated = {"income": sum(e["income"] for e in per_entity.values()),
-                    "expense": sum(e["expense"] for e in per_entity.values())}
+                    "expense": sum(e["expense"] for e in per_entity.values()),
+                    "core_expense": sum(e["core_expense"] for e in per_entity.values()),
+                    "discretionary_expense": sum(e["discretionary_expense"] for e in per_entity.values()),
+                    "uncategorized_expense": sum(e["uncategorized_expense"] for e in per_entity.values())}
     consolidated["net"] = consolidated["income"] - consolidated["expense"]
+    by_cat: dict[str, float] = {}
+    for e in per_entity.values():
+        for k, v in e["expense_by_category"].items():
+            by_cat[k] = by_cat.get(k, 0.0) + v
+    consolidated["expense_by_category"] = by_cat
     return {
         "per_entity": dict(per_entity),
         "consolidated": consolidated,

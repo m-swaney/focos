@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Update",
+  "description": "One structured change the model asks the harness to apply. Only these targets and fields exist.",
+  "type": "object",
+  "required": ["target"],
+  "properties": {
+    "target": {"type": "string", "enum": ["goal", "tax_agenda", "profile", "spending", "decision"]},
+    "op": {"type": "string", "enum": ["set", "add", "append", "resolve"]},
+    "id": {"type": "string", "description": "goal id, tax_agenda item id, or decision id"},
+    "text": {"type": "string", "description": "tax_agenda add: the new item; profile append: the note"},
+    "path": {"type": "string", "enum": ["income.notes", "cash_policy.notes", "risk.notes", "family.notes"]},
+    "set": {
+      "type": "object",
+      "description": "goal: status active|done|paused, completed_on, target_amount, deadline, notes, funded_amount. tax_agenda: status open|done|dropped, done_on, notes. spending: monthly_core_expenses, monthly_discretionary. decision: status acted|retired|standing, note.",
+      "additionalProperties": true
+    },
+    "reason": {"type": "string"},
+    "source_note_id": {"type": ["string", "null"], "description": "the inbox note this update answers"}
+  }
+}

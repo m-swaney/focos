@@ -4,6 +4,7 @@
 #   debt_payoff             balance of the first liability whose name matches params.match (regex)
 #   retirement_contribution profile.retirement.contributions[params.owner][params.account_role].ytd
 #   purchase | custom       params.funded_amount, updated by hand
+# status: active | done | paused (Done buttons on the dashboard Plan page, or `focos done goal <id>`).
 version: 2
 goals:
   - kind: emergency_fund

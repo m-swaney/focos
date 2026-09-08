@@ -77,7 +77,19 @@ def run_all() -> list[Check]:
                          fix="Install Claude Code and run `claude` once to log in, or switch ai.mode to api in Setup."))
         for a in tokens.alerts():
             out.append(Check(id=f"token_{a['code']}", ok=False, severity=a["severity"] if a["severity"] != "critical" else "error",
-                             title="Claude / broker login", detail=a["text"], fix="Open a `claude` session (and `/mcp`) to renew."))
+                             title="Claude / broker login", detail=a["text"],
+                             fix=("Run `focos auth robinhood`." if a["code"].startswith("robinhood")
+                                  else "Open an interactive `claude` session to renew the Claude login.")))
+    if (cfg.get("holdings") or {}).get("source") == "robinhood_mcp":
+        from ..run import tokens
+        rs = tokens.robinhood_status()
+        ka = tokens.keepalive_record() or {}
+        ka_txt = ("never run" if not ka else f"keep-alive {'ok' if ka.get('ok') else 'failed'} on {ka.get('date')}")
+        hl = rs.get("hours_left")
+        out.append(Check(id="robinhood_token", ok=bool(rs["present"] and not rs["expired"] and (hl is None or hl > 12) and ka.get("ok", True)),
+                         severity="error" if (not rs["present"] or rs["expired"]) else "warn", title="Robinhood login",
+                         detail=(f"expires in {hl:.0f}h; {ka_txt}" if hl is not None else f"not connected; {ka_txt}"),
+                         fix="Run `focos auth robinhood`."))
     else:
         out.append(Check(id="ai_key", ok=ok, severity="error", title=f"AI provider {ai.get('provider')}", detail=detail,
                          fix="Paste the API key in Setup > AI.", fix_action="retest_ai"))
@@ -125,6 +137,11 @@ def run_all() -> list[Check]:
     out.append(Check(id="schedule", ok=bool(daily_job and daily_job.installed), severity="warn", title=f"Scheduled runs ({sch.platform})",
                      detail=(f"next {daily_job.next_run}" if daily_job and daily_job.installed else "not installed"),
                      fix="Run `focos schedule install` (Setup > Schedule).", fix_action="reinstall_schedule"))
+    if any(j.key == "keepalive" for j in scheduler.run_jobs()):
+        ka_job = jobs.get(scheduler.JOB_NAMES["keepalive"])
+        out.append(Check(id="keepalive_job", ok=bool(ka_job and ka_job.installed), severity="warn", title="Robinhood keep-alive job",
+                         detail=(f"next {ka_job.next_run}" if ka_job and ka_job.installed else "not installed"),
+                         fix="Run `focos schedule install`.", fix_action="reinstall_schedule"))
     legacy = getattr(sch, "legacy_present", None)
     if legacy and (names := legacy()):
         out.append(Check(id="legacy_tasks", ok=False, severity="warn", title="Old FOCOS scheduled tasks still registered",
@@ -170,7 +187,7 @@ def fix(check_id: str) -> dict:
         from ..llm import LLMError, provider_for
         try:
             c = provider_for().test()
-            return {"ok": True, "result": {"model": c.model, "cost_usd": c.cost_usd}}
+            return {"ok": True, "result": {"model": c.model}}
         except LLMError as e:
             return {"ok": False, "error": str(e)}
     if check_id in ("migrate", "config_version"):

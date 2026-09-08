@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { MarkDone } from "@/components/inbox/MarkDone";
 import { Chip, Empty, PageHeader } from "@/components/ui";
 import { Segmented } from "@/components/ui/Segmented";
 import { briefText, briefs, decisions } from "@/lib/data/briefs";
@@ -53,15 +54,21 @@ export function BriefsShell({ kind, id }: { kind?: string; id?: string }) {
   const decisionList = dec.length ? (
     <ul className="divide-y divide-hairline">
       {dec.map((d, i) => (
-        <li key={i} className="py-2.5 text-[13px]">
+        <li key={i} className={`py-2.5 text-[13px] ${d.kind === "resolution" ? "text-secondary" : ""}`}>
           <div className="flex items-center justify-between gap-3 text-xs text-muted">
             <span>
               {dateShort(d.date)}
               {d.kind ? ` ${d.kind}` : ""}
+              {d.kind === "resolution" && d.status ? ` ${d.status}` : ""}
             </span>
             {d.review_on ? <span>review {dateShort(d.review_on)}</span> : null}
           </div>
           <div className="mt-0.5 leading-snug">{d.text}</div>
+          {d.kind !== "resolution" && d.id ? (
+            <div className="mt-1.5">
+              <MarkDone target="decision" id={d.id} status={d.status ?? "open"} />
+            </div>
+          ) : null}
         </li>
       ))}
     </ul>

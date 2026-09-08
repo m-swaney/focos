@@ -31,6 +31,14 @@ def sources():
                        "total_value": cur.get("total_value")} if cur else None}
 
 
+@router.get("/robinhood")
+def robinhood():
+    """Login status for the broker MCP plus the last keep-alive record (no token values)."""
+    from ...run import tokens
+
+    return {"status": tokens.robinhood_status(), "keepalive": tokens.keepalive_record(), "fix": "focos auth robinhood"}
+
+
 class SetSource(BaseModel):
     source: str
 

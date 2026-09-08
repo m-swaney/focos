@@ -74,6 +74,15 @@ def run(mode: str, date: str | None = None, heavy: bool | None = None, bump: boo
     outputs["consolidated.json"] = ledger["consolidated"]
     outputs["entities.json"] = ledger["entities"]
 
+    try:
+        from . import spending as spending_mod
+        refine = spending_mod.refine(outputs["consolidated.json"], date)
+        if outputs["consolidated.json"].get("available"):
+            outputs["consolidated.json"].setdefault("spending", {})["refine"] = refine
+    except Exception as e:  # noqa: BLE001
+        if outputs["consolidated.json"].get("available"):
+            outputs["consolidated.json"].setdefault("spending", {})["refine"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+
     from . import plan as plan_mod
     try:
         outputs["plan.json"] = plan_mod.build(outputs["portfolio.json"] if has_holdings else None, outputs["consolidated.json"],
@@ -84,7 +93,9 @@ def run(mode: str, date: str | None = None, heavy: bool | None = None, bump: boo
 
     history = [settings.read_json(f, {}) for f in holdings.snapshot_files()[-400:]]
     from .run import tokens as tokens_mod
-    token_alerts = tokens_mod.alerts() if (settings.focos().get("ai") or {}).get("mode") == "agent" else []
+    fcfg = settings.focos()
+    token_alerts = tokens_mod.alerts() if ((fcfg.get("ai") or {}).get("mode") == "agent"
+                                          or (fcfg.get("holdings") or {}).get("source") == "robinhood_mcp") else []
     outputs["alerts.json"] = {
         "date": date,
         "alerts": alerts_mod.build(cur, outputs["portfolio.json"] if has_holdings else {}, settings.profile_v2(),

@@ -1,0 +1,48 @@
+/** The spending taxonomy. Mirrors focos/ledger/categories.py CATEGORIES (a test keeps them equal). */
+export const CATEGORIES = [
+  "housing",
+  "utilities",
+  "groceries",
+  "dining",
+  "transport",
+  "health",
+  "insurance",
+  "shopping",
+  "travel",
+  "entertainment",
+  "subscriptions",
+  "kids_family",
+  "education",
+  "gifts_donations",
+  "personal_care",
+  "fees_interest",
+  "taxes",
+  "business_ops",
+  "professional_services",
+  "uncategorized",
+] as const;
+
+export type Category = (typeof CATEGORIES)[number];
+
+export const CATEGORY_LABEL: Record<string, string> = {
+  housing: "Housing",
+  utilities: "Utilities",
+  groceries: "Groceries",
+  dining: "Dining",
+  transport: "Transport",
+  health: "Health",
+  insurance: "Insurance",
+  shopping: "Shopping",
+  travel: "Travel",
+  entertainment: "Entertainment",
+  subscriptions: "Subscriptions",
+  kids_family: "Kids and family",
+  education: "Education",
+  gifts_donations: "Gifts and donations",
+  personal_care: "Personal care",
+  fees_interest: "Fees and interest",
+  taxes: "Taxes",
+  business_ops: "Business operations",
+  professional_services: "Professional services",
+  uncategorized: "Uncategorized",
+};

@@ -93,11 +93,31 @@ export interface CashFlowEntity {
   n_transactions?: number;
   n_transfers?: number;
   income_by_label?: Record<string, number>;
+  expense_by_category?: Record<string, number>;
+  core_expense?: number;
+  discretionary_expense?: number;
+  uncategorized_expense?: number;
+}
+
+export interface SpendingSummary {
+  observed_monthly_core_30d?: number;
+  observed_monthly_core_90d?: number;
+  observed_monthly_discretionary_90d?: number;
+  observed_monthly_expense_90d?: number;
+  coverage_pct_90d?: number | null;
+  history_days?: number;
+  configured_monthly_core?: number | null;
+  configured_monthly_discretionary?: number | null;
+  configured_source?: "user" | "observed" | null;
+  observed_asof?: string | null;
+  by_category_90d?: Record<string, number>;
+  top_uncategorized?: { merchant_key: string; display_name: string; total: number; n: number; sample?: string }[];
+  refine?: { eligible?: boolean; reason?: string | null; applied?: string[]; candidates?: Record<string, { observed: number; configured: number; status: string }>; error?: string };
 }
 
 export interface CashFlowWindow {
   per_entity: Record<EntityKey, CashFlowEntity>;
-  consolidated: { income: number; expense: number; net: number };
+  consolidated: { income: number; expense: number; net: number; expense_by_category?: Record<string, number>; core_expense?: number; discretionary_expense?: number; uncategorized_expense?: number };
   inter_entity_flows: InterEntityFlow[];
   unmatched: UnmatchedTxn[];
   counts?: { total: number; transfers: number; unmatched: number };
@@ -112,6 +132,8 @@ export interface Consolidated {
   liabilities?: number;
   by_entity?: Record<EntityKey, EntitySummary>;
   cash_flow?: Partial<Record<"30d" | "90d", CashFlowWindow>>;
+  spending?: SpendingSummary;
+  categorize?: { rules_applied?: number; seeded?: number; asked?: number; labeled?: number; low_confidence?: number; skipped?: string | null; provider?: string | null; error?: string | null };
   personal_runway_months?: number | null;
   unmapped_accounts?: { id: string; name: string }[];
   broker_in_ledger?: boolean;
@@ -207,6 +229,8 @@ export interface Debt {
   payoff_vs_invest?: string;
 }
 
+export type GoalStatus = "active" | "done" | "paused";
+
 export interface Goal {
   id: string;
   name: string;
@@ -215,6 +239,17 @@ export interface Goal {
   funded: number | null;
   progress: number | null;
   deadline: string | null;
+  status?: GoalStatus;
+  completed_on?: string | null;
+}
+
+export interface TaxAgendaItem {
+  id: string;
+  text: string;
+  status?: "open" | "done" | "dropped";
+  added_on?: string | null;
+  done_on?: string | null;
+  notes?: string | null;
 }
 
 export interface Plan {
@@ -233,7 +268,8 @@ export interface Plan {
     note?: string;
   };
   protection?: { gaps: string[]; planning_children?: boolean; priority?: string };
-  tax_agenda?: string[];
+  tax_agenda?: (TaxAgendaItem | string)[];
+  goals_summary?: { active: number; done: number; paused: number };
   emergency_fund?: {
     cash: number;
     months_covered: number;
@@ -384,6 +420,7 @@ export interface Alerts {
     claude_access_expires?: string | null;
     claude_refresh_expires?: string | null;
     subscription?: string | null;
+    keepalive?: { ts?: string; date?: string; ok: boolean; auth_error?: boolean; refreshed?: boolean; error?: string | null } | null;
   };
 }
 
@@ -395,9 +432,10 @@ export interface BriefResult {
   alerts?: { severity: Severity; text: string }[];
   needs_user?: string[];
   decisions_logged?: number;
+  updates_applied?: number;
   proposals?: string[];
   trades_placed?: string[];
-  _meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number };
+  _meta?: { duration_ms?: number; num_turns?: number };
 }
 
 export interface Catalysts {
@@ -426,7 +464,6 @@ export interface StageStatus {
   ok: boolean;
   error?: string | null;
   at?: string;
-  cost_usd?: number;
   duration_ms?: number;
 }
 
@@ -437,7 +474,6 @@ export interface RunStatus {
   ok: boolean | null;
   stage?: string;
   error?: string | null;
-  cost_usd?: number;
   stages?: Partial<Record<"A" | "B" | "C", StageStatus>>;
   summary_line?: string;
   report_path?: string;
@@ -447,12 +483,46 @@ export interface RunStatus {
 export type Status = Partial<Record<Mode, RunStatus>>;
 
 export interface Decision {
+  id?: string;
   date: string;
   run?: string;
   kind?: string;
   text: string;
   evidence?: string;
-  review_on?: string;
+  review_on?: string | null;
+  /** resolution lines only */
+  ref?: string;
+  status?: string;
+  by?: string;
+}
+
+export interface InboxNote {
+  id: string;
+  ts: string;
+  source?: string;
+  text: string;
+  about?: { type: string; id?: string } | null;
+  status: "pending" | "consumed" | "applied" | "answered" | "dismissed";
+  consumed_run?: string | null;
+  consumed_count?: number;
+  resolved_ts?: string | null;
+  resolution?: string | null;
+}
+
+export interface ChangeRecord {
+  ts: string;
+  date: string;
+  run: string;
+  actor: "model" | "user" | "system" | string;
+  target: string;
+  op?: string;
+  id?: string | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  reason?: string;
+  source_note_id?: string | null;
+  ok: boolean;
+  error?: string | null;
 }
 
 export interface GateEntry {

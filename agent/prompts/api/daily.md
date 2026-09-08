@@ -3,7 +3,9 @@ Daily brief for {{DATE}}. Run id: {{RUN_ID}}.
 Use the data sections below: profile and goals, alerts, portfolio (accounts, positions, weights, gains,
 concentration, look-through, sectors), diff (changes since the previous snapshot), consolidated (entities
 and cash when the ledger is connected), plan, sandbox (mode, positions, scorecard), sandbox_rules,
-catalysts (earnings and news), the previous daily brief, and recent decisions.
+catalysts (earnings and news), inbox (notes from {{OWNER}}, recent changes, open tax items, active goals),
+the previous daily brief, and recent decisions. Handle every inbox note per your system prompt; updates and
+note replies go in the final JSON block.
 
 Write the daily brief following the brief contract in your system prompt. Keep it under 500 words unless
 something material happened. Do not repeat weekly deep-dive content; point to it if relevant.

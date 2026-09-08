@@ -25,3 +25,17 @@ def test_shipped_prompts_are_templated_not_personal(initialized_home: Path):
     rendered = render_placeholders((paths.AGENT / "prompts" / "system.md").read_text(encoding="utf-8"), date="2026-01-01")
     assert "{{" not in rendered
     assert "## Actions for you" in rendered  # no owner configured -> generic
+    assert "## What I updated" in rendered and '"target":"goal"' in rendered
+
+
+def test_task_prompts_point_at_the_inbox(initialized_home: Path):
+    from focos.brief import prompts
+
+    daily = prompts.render("daily", "2026-03-04", "daily-2026-03-04-1")
+    assert "state/derived/latest/inbox.json" in daily and "state/updates/daily-2026-03-04-1.json" in daily
+    assert '"updates_file"' in daily
+    api_daily = prompts.render("daily", "2026-03-04", "r", variant="api")
+    assert "inbox" in api_daily and '"note_replies"' in api_daily
+    for mode in ("weekly", "monthly"):
+        assert "state/updates/r.json" in prompts.render(mode, "2026-03-04", "r")
+    assert "state/updates/**" in prompts.addendum("agent")

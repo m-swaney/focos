@@ -56,6 +56,56 @@ def _legacy_providers(store) -> list[str]:
     return [p for p in store.providers_present() if p not in PRIMARY_PROVIDERS and p != MANUAL_PROVIDER]
 
 
+@ledger_app.command("categorize")
+def ledger_categorize(force: bool = typer.Option(False, "--force", help="ask the model again even if it ran today"),
+                      dry_run: bool = typer.Option(False, "--dry-run", help="show what would be asked; write nothing")) -> None:
+    """Apply merchant rules and label new merchants (rules first, one model batch for the rest)."""
+    from datetime import date as _date
+
+    from . import categorize
+
+    store = _store()
+    try:
+        out = categorize.run(store, _date.today().isoformat(), force=force, dry_run=dry_run)
+    finally:
+        store.close()
+    _echo(out)
+    if out.get("error"):
+        raise typer.Exit(1)
+
+
+@ledger_app.command("merchants")
+def ledger_merchants(uncategorized: bool = typer.Option(True, "--uncategorized/--all", help="only merchants without a category"),
+                     n: int = 50, days: int = 95) -> None:
+    """Merchants seen in the window, with their categories (or without one)."""
+    from datetime import date as _date
+    from datetime import timedelta
+
+    store = _store()
+    try:
+        if uncategorized:
+            rows = store.uncategorized_merchants((_date.today() - timedelta(days=days)).isoformat(), _date.today().isoformat(), limit=n)
+        else:
+            rows = list(store.merchant_rules().values())[:n]
+    finally:
+        store.close()
+    _echo(rows)
+
+
+@ledger_app.command("set-category")
+def ledger_set_category(merchant_key: str, category: str) -> None:
+    """Teach focos a merchant's category (a user rule; it beats seeds and the model)."""
+    from datetime import date as _date
+
+    from ..updates import apply as apply_mod
+
+    changes = apply_mod.apply([{"target": "merchant_rule", "id": merchant_key.strip().upper(), "category": category, "reason": "cli"}],
+                              actor="user", run="cli", date=_date.today().isoformat())
+    _echo({"ok": changes[0]["ok"], "summary": apply_mod.describe(changes[0]), "error": changes[0].get("error")})
+    if not changes[0]["ok"]:
+        raise typer.Exit(1)
+
+
 @ledger_app.command("claim")
 def ledger_claim(token: str = typer.Option(..., "--token", help="SimpleFIN setup token (one-time use)"),
                  pull: bool = typer.Option(True, help="pull accounts right away")) -> None:

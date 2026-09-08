@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { REPORTS, SANDBOX, STATE } from "@/lib/data/paths";
@@ -44,6 +45,19 @@ export function briefSection(md: string | null, heading: string): string | null 
   return briefSectionMatching(md, re);
 }
 
-export const decisions = (limit = 50): Decision[] => readJsonl<Decision>(path.join(STATE, "decisions.jsonl")).slice(-limit).reverse();
+export const decisionId = (date: string, text: string) => createHash("sha1").update(`${date}|${text}`, "utf8").digest("hex").slice(0, 8);
+
+/** Decisions newest first, each with a stable id and its status from later resolution lines (open when none). */
+export function decisions(limit = 50): Decision[] {
+  const rows = readJsonl<Decision>(path.join(STATE, "decisions.jsonl")).map((d) =>
+    d.kind === "resolution" || d.id ? d : { ...d, id: decisionId(d.date ?? "", d.text ?? "") },
+  );
+  const status = new Map<string, string>();
+  for (const r of rows) if (r.kind === "resolution" && r.ref && r.status) status.set(r.ref, r.status);
+  return rows
+    .map((d) => (d.kind === "resolution" ? d : { ...d, status: status.get(d.id ?? "") ?? "open" }))
+    .slice(-limit)
+    .reverse();
+}
 
 export const gateLog = (limit = 50): GateEntry[] => readJsonl<GateEntry>(path.join(SANDBOX, "gate_log.jsonl")).slice(-limit).reverse();

@@ -25,6 +25,7 @@ STAGE_C_READ = [PREFIX + t for t in (
 class RobinhoodAdapter:
     name = "robinhood"
     mcp_server_name = SERVER
+    mcp_server_url = URL
     market_tz = "America/New_York"
 
     def mcp_config(self) -> dict:

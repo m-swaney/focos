@@ -46,7 +46,6 @@ class Turn(BaseModel):
     finished: bool = False
     confirmed: list[str] = []
     remaining: list[str] = []
-    cost_usd: float = 0.0
     over_budget: bool = False
 
 
@@ -143,7 +142,7 @@ def _handle(s: Session, comp, provider_name: str) -> Turn:
     _save(s)
     return Turn(session_id=s.id, assistant_text=text, proposal=proposal, finished=s.finished, confirmed=list(s.confirmed),
                 remaining=[x for x in schemas.SECTIONS if x not in s.confirmed and x not in s.skipped],
-                cost_usd=round(s.cost_usd, 4), over_budget=s.cost_usd > _budget())
+                over_budget=s.cost_usd > _budget())
 
 
 def _complete(s: Session, provider: LLMProvider):
@@ -168,7 +167,7 @@ def reply(sid: str, text: str, provider: LLMProvider | None = None) -> Turn:
     if s is None:
         raise KeyError(sid)
     if s.cost_usd > _budget():
-        raise LLMError(f"interview budget of ${_budget():.2f} reached; raise ai.budget_usd.interview to continue")
+        raise LLMError("the interview reached its usage limit (ai.budget_usd.interview); finish the remaining sections with the forms")
     prov = _provider(provider)
     s.messages.append(Message(role="user", content=text))
     comp = _complete(s, prov)

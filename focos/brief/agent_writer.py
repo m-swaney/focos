@@ -7,7 +7,7 @@ from ..run import claude_io
 from ..sandbox import brokers
 from ..sandbox import state as sandbox_state
 from . import prompts
-from .base import BriefOutcome, record_result, validate_result
+from .base import BriefOutcome, apply_updates, prepare_inbox, record_result, validate_result
 
 
 def trade_tools_enabled() -> bool:
@@ -23,6 +23,7 @@ class AgentBriefWriter:
         agent = cfg.get("agent") or {}
         adapter = brokers.current()
         files = settings_render.render(adapter)
+        prepare_inbox(run_id, mode)
         # the system prompt carries {{OWNER}} etc.; render it into the home so the CLI reads a filled file
         rendered_system = paths.HOME_AGENT / "system.rendered.md"
         rendered_system.write_text(prompts.system_prompt() + "\n\n" + prompts.addendum("agent"), encoding="utf-8")
@@ -33,6 +34,8 @@ class AgentBriefWriter:
                                        settings_file=files["settings"], system_prompt=rendered_system, trade_enabled=trade)
         prompt = prompts.render(mode, date, run_id)
         log = paths.LOGS / f"{date}-{mode}-C.json"
+        if agent.get("debug_claude"):
+            args += claude_cli.debug_args(paths.LOGS / f"{date}-{mode}-C.debug.log")
         try:
             result = claude_cli.run(prompt, args, log_path=log, cwd=paths.HOME, claude=agent.get("claude_cli") or "auto")
         except Exception as e:  # CLI missing, timeout, unreadable output
@@ -40,16 +43,26 @@ class AgentBriefWriter:
         meta = {**claude_io.summarize(result), "trade_tools": trade, "model": model}
         if meta["is_error"]:
             return BriefOutcome(ok=False, error=str(result.get("result") or result.get("error") or meta.get("subtype"))[:500],
-                                cost_usd=meta.get("cost_usd"), meta=meta)
+                                meta=meta)
         text = result.get("result") or ""
         try:
             payload = claude_io.extract_json(text)
         except Exception as e:
             (paths.LOGS / f"{date}-{mode}-C-result.txt").write_text(text, encoding="utf-8")
-            return BriefOutcome(ok=False, error=f"no JSON in result: {e}", cost_usd=meta.get("cost_usd"), meta=meta)
+            return BriefOutcome(ok=False, error=f"no JSON in result: {e}", meta=meta)
         errors = validate_result(payload)
         if errors:
-            return BriefOutcome(ok=False, error="brief_result schema: " + "; ".join(errors[:5]), result=payload,
-                                cost_usd=meta.get("cost_usd"), meta=meta)
+            return BriefOutcome(ok=False, error="brief_result schema: " + "; ".join(errors[:5]), result=payload, meta=meta)
+        file_updates, file_replies = _updates_file(run_id)
+        apply_updates(payload, run_id=run_id, date=date, extra_updates=file_updates, extra_replies=file_replies)
         record_result(payload, meta, date, mode)
-        return BriefOutcome(ok=True, result=payload, report_path=payload.get("report_path"), cost_usd=meta.get("cost_usd"), meta=meta)
+        return BriefOutcome(ok=True, result=payload, report_path=payload.get("report_path"), meta=meta)
+
+
+def _updates_file(run_id: str) -> tuple[list, list]:
+    """state/updates/<run_id>.json written by the model: {"updates": [...], "note_replies": [...]}."""
+    p = paths.UPDATES / f"{run_id}.json"
+    data = settings.read_json(p, None) if p.exists() else None
+    if not isinstance(data, dict):
+        return [], []
+    return list(data.get("updates") or []), list(data.get("note_replies") or [])

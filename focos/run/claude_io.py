@@ -61,7 +61,6 @@ def extract_json(text: str) -> dict:
 def summarize(result: dict) -> dict:
     return {
         "is_error": bool(result.get("is_error")),
-        "cost_usd": result.get("total_cost_usd"),
         "duration_ms": result.get("duration_ms"),
         "num_turns": result.get("num_turns"),
         "session_id": result.get("session_id"),

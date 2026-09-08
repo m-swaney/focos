@@ -252,9 +252,11 @@ def build(portfolio: dict | None, consolidated: dict | None, risk: dict | None, 
     grows = []
     for g in (settings.goals_v2() or {}).get("goals") or []:
         tgt, funded = _goal_funded(g, ctx)
-        grows.append({"id": g.get("id"), "kind": g.get("kind"), "name": g.get("name"), "target": tgt, "funded": funded,
-                      "progress": (funded / tgt) if (funded is not None and tgt) else None, "deadline": g.get("deadline")})
+        grows.append({"id": g.get("id"), "kind": g.get("kind"), "name": g.get("name"), "entity": g.get("entity"), "target": tgt,
+                      "funded": funded, "progress": (funded / tgt) if (funded is not None and tgt) else None,
+                      "deadline": g.get("deadline"), "status": g.get("status") or "active", "completed_on": g.get("completed_on")})
     out["goals"] = grows
+    out["goals_summary"] = {s: sum(1 for r in grows if r["status"] == s) for s in ("active", "done", "paused")}
     out["missing"] = sorted(set(out["missing"]))
     out["available"] = True
     return out

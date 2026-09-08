@@ -22,5 +22,6 @@ Write `reports/weekly/{{WEEK}}.md`. Use the standard sections, then add:
     against its thesis, and propose rule changes for {{OWNER}} to consider (you cannot change rules).
 14. `## Decisions for {{OWNER}}` the three most valuable decisions to make this week.
 
-Keep the weekly under 1,200 words. Append decisions to `state/decisions.jsonl` and return the
-structured result.
+Keep the weekly under 1,200 words. Handle every note in `inbox.json`; write structured updates and note
+replies to `state/updates/{{RUN_ID}}.json` when you have any. Append decisions to `state/decisions.jsonl`
+and return the structured result.

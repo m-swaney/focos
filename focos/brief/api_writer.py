@@ -10,7 +10,7 @@ from ..llm import LLMError, Message, provider_for
 from ..llm.base import structured_via_text
 from ..run.claude_io import FENCE
 from . import context, outputs, prompts
-from .base import BriefOutcome, record_result, validate_result
+from .base import BriefOutcome, apply_updates, prepare_inbox, record_result, validate_result
 
 BRIEF_SCHEMA_PATH = "schemas/brief_result.schema.json"
 
@@ -45,6 +45,7 @@ class APIBriefWriter:
             provider = self._provider or provider_for(ai, heavy=(mode != "daily"))
         except LLMError as e:
             return BriefOutcome(ok=False, error=str(e))
+        prepare_inbox(run_id, mode)
         bundle = context.fit(context.build(mode, date), int(ai.get("max_input_tokens") or 60000))
         system = prompts.system_prompt() + "\n\n" + prompts.addendum("api")
         user = prompts.render(mode, date, run_id, variant="api") + "\n\n# Data\n\n" + bundle.render()
@@ -54,7 +55,7 @@ class APIBriefWriter:
             comp = provider.complete(system, [Message(role="user", content=user)], max_tokens=max_out)
         except LLMError as e:
             return BriefOutcome(ok=False, error=str(e), meta=meta)
-        cost = comp.cost_usd
+        cost = comp.cost_usd  # internal only: budget enforcement, never surfaced
         markdown, payload = split_brief(comp.text)
         if payload is None or validate_result(payload):
             # second, cheap pass: ask for just the result JSON for the brief we already have
@@ -67,9 +68,9 @@ class APIBriefWriter:
                 cost = (cost or 0) + (comp2.cost_usd or 0)
             except LLMError as e:
                 (paths.LOGS / f"{date}-{mode}-C-result.txt").write_text(comp.text, encoding="utf-8")
-                return BriefOutcome(ok=False, error=f"no valid brief_result JSON: {e}", cost_usd=cost, meta=meta)
+                return BriefOutcome(ok=False, error=f"no valid brief_result JSON: {e}", meta=meta)
         if not markdown or not re.search(r"^##\s+", markdown, re.M):
-            return BriefOutcome(ok=False, error="model returned no markdown brief sections", cost_usd=cost, meta=meta, result=payload)
+            return BriefOutcome(ok=False, error="model returned no markdown brief sections", meta=meta, result=payload)
         rel = outputs.write_report(mode, date, markdown)
         payload["report_path"] = rel
         n_dec = outputs.append_decisions(payload.get("decisions") or [], date, mode)
@@ -79,9 +80,10 @@ class APIBriefWriter:
         payload.setdefault("trades_placed", [])
         payload.pop("decisions", None)
         payload.pop("proposal_specs", None)
+        apply_updates(payload, run_id=run_id, date=date)
         budget = (ai.get("budget_usd") or {}).get(mode)
-        meta.update({"cost_usd": cost, "usage": comp.usage.model_dump(), "stop_reason": comp.stop_reason, "budget_usd": budget})
+        meta.update({"usage": comp.usage.model_dump(), "stop_reason": comp.stop_reason})
         if cost is not None and budget and cost > float(budget):
             meta["over_budget"] = True
         record_result(payload, meta, date, mode)
-        return BriefOutcome(ok=True, result=payload, report_path=rel, cost_usd=cost, meta=meta)
+        return BriefOutcome(ok=True, result=payload, report_path=rel, meta=meta)

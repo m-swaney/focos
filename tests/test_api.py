@@ -24,6 +24,53 @@ def client(initialized_home: Path, monkeypatch):
     return c
 
 
+def test_inbox_updates_and_changes_routes(client, initialized_home: Path):
+    (initialized_home / "config" / "goals.yml").write_text(yaml.safe_dump({"version": 2, "goals": [{"id": "roof", "kind": "custom", "name": "Roof"}]}))
+    settings.reset()
+    r = client.post("/inbox", json={"text": "Roof is done.", "about": {"type": "goal", "id": "roof"}}).json()
+    assert r["ok"] and r["note"]["status"] == "pending"
+    assert client.post("/inbox", json={"text": "  "}).json()["ok"] is False
+    lst = client.get("/inbox").json()
+    assert len(lst["pending"]) == 1 and lst["unaddressed"] == []
+    u = client.post("/updates", json={"updates": [{"target": "goal", "id": "roof", "set": {"status": "done"}}]}).json()
+    assert u["ok"] and u["changes"][0]["actor"] == "user" and u["changes"][0]["summary"].startswith("goal roof: status = done")
+    assert yaml.safe_load((initialized_home / "config" / "goals.yml").read_text())["goals"][0]["status"] == "done"
+    bad = client.post("/updates", json={"updates": [{"target": "goal", "id": "nope", "set": {"status": "done"}}]}).json()
+    assert not bad["ok"] and "unknown goal" in bad["changes"][0]["error"]
+    ch = client.get("/changes").json()["changes"]
+    assert len(ch) == 2 and ch[0]["ok"] is False and ch[1]["ok"] is True  # newest first
+    d = client.post(f"/inbox/{r['note']['id']}/dismiss").json()
+    assert d["ok"] and d["note"]["status"] == "dismissed"
+    assert client.post("/inbox/n_nothing/dismiss").json()["ok"] is False
+
+
+def test_ledger_category_routes(client, initialized_home: Path):
+    from focos.ledger.providers.sqlite_store import SQLiteStore
+    from focos.ledger.providers.base import LedgerAccount
+
+    assert client.get("/ledger/merchants").json() == {"merchants": []}  # no ledger yet
+    cats = client.get("/ledger/categories").json()
+    assert "groceries" in cats["categories"] and "dining" in cats["discretionary"] and cats["counts"] == {}
+    store = SQLiteStore(paths.LEDGER_DB)
+    store.upsert_account(LedgerAccount(id="simplefin:A", provider="simplefin", name="Checking", account_type="depository", subtype="checking"))
+    store.upsert_transactions("simplefin:A", [{"id": "t1", "posted_date": "2026-09-01", "amount": -50, "description": "SOME LOCAL PLACE 12", "payee": None},
+                                              {"id": "t2", "posted_date": "2026-09-02", "amount": -30, "description": "SOME LOCAL PLACE 12", "payee": None}])
+    store.close()
+    import focos.api.routes.ledger as lr
+    monkeypatch_today = lr._date.today().isoformat()
+    rows = client.get("/ledger/merchants", params={"days": 3650}).json()["merchants"]
+    assert rows and rows[0]["merchant_key"] == "SOME LOCAL PLACE" and rows[0]["n"] == 2, (rows, monkeypatch_today)
+    bad = client.post("/ledger/categories/rule", json={"merchant_key": "SOME LOCAL PLACE", "category": "snacks"}).json()
+    assert not bad["ok"] and "unknown category" in bad["error"]
+    ok = client.post("/ledger/categories/rule", json={"merchant_key": "some local place", "category": "dining"}).json()
+    assert ok["ok"] and ok["change"]["after"] == {"category": "dining", "transactions": 2} and ok["change"]["actor"] == "user"
+    assert client.get("/ledger/merchants", params={"days": 3650}).json()["merchants"] == []
+    counts = client.get("/ledger/categories", params={"days": 3650}).json()["counts"]
+    assert counts["dining"] == {"n": 2, "spend": 80.0}
+    ch = client.get("/changes").json()["changes"][0]
+    assert ch["target"] == "merchant_rule" and ch["id"] == "SOME LOCAL PLACE"
+
+
 def test_auth_required(initialized_home: Path):
     c = TestClient(create_app(token=TOKEN))
     assert c.get("/health").status_code == 200
@@ -163,7 +210,7 @@ def test_interview_flow(client, initialized_home: Path, monkeypatch):
     assert c["ok"] and yaml.safe_load((initialized_home / "config" / "goals.yml").read_text())["goals"][0]["id"] == "boat"
     t = client.post("/interview/reply", json={"session_id": sid, "text": "ok"}).json()
     assert t["finished"] and "owner" in t["confirmed"] and "goals" in t["confirmed"]
-    assert t["cost_usd"] > 0 and not t["over_budget"]
+    assert "cost_usd" not in t and not t["over_budget"]
     bad = client.post("/interview/confirm", json={"section": "household", "data": {"timezone": "Mars/Olympus"}}).json()
     assert not bad["ok"] and "timezone" in bad["errors"][0]
     assert client.get("/setup/status").json()["steps"]["profile"] == "done"

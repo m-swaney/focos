@@ -74,7 +74,11 @@ SANDBOX: Path
 PROPOSALS: Path
 APPROVALS: Path
 STATUS: Path
+KEEPALIVE: Path
 DECISIONS: Path
+INBOX: Path
+CHANGES: Path
+UPDATES: Path
 REPORTS: Path
 TEARSHEETS: Path
 DATA: Path
@@ -102,7 +106,11 @@ def _bind(home: Path) -> None:
     g["PROPOSALS"] = g["SANDBOX"] / "proposals"
     g["APPROVALS"] = g["SANDBOX"] / "approvals"
     g["STATUS"] = g["STATE"] / "status.json"
+    g["KEEPALIVE"] = g["STATE"] / "keepalive.json"
     g["DECISIONS"] = g["STATE"] / "decisions.jsonl"
+    g["INBOX"] = g["STATE"] / "inbox.jsonl"
+    g["CHANGES"] = g["STATE"] / "changes.jsonl"
+    g["UPDATES"] = g["STATE"] / "updates"
     g["REPORTS"] = home / "reports"
     g["TEARSHEETS"] = g["REPORTS"] / "tearsheets"
     g["DATA"] = home / "data"
@@ -121,7 +129,7 @@ _bind(resolve_home())
 
 
 def ensure_dirs() -> None:
-    for p in (CONFIG, RAW, LOGS, CACHE, BACKUPS, SNAPSHOTS_HOLDINGS, SNAPSHOTS_LEDGER, LATEST, PROPOSALS, APPROVALS,
+    for p in (CONFIG, RAW, LOGS, CACHE, BACKUPS, SNAPSHOTS_HOLDINGS, SNAPSHOTS_LEDGER, LATEST, PROPOSALS, APPROVALS, UPDATES,
               REPORTS / "daily", REPORTS / "weekly", REPORTS / "monthly", TEARSHEETS, DATA):
         p.mkdir(parents=True, exist_ok=True)
 

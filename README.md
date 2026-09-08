@@ -64,13 +64,23 @@ diagnostics zip you can share when asking for help.
 
 ```
 focos run --mode daily          # one full cycle now
+focos note "the withholding is fixed"   # tell your chief of staff something; read on the next run
+focos done goal <id>            # mark a goal done (also: done tax <id>, done decision <id>, reopen goal <id>)
+focos changes                   # what changed in goals, agenda, spending, decisions, and who changed it
 focos ledger refresh            # pull the bank feed
+focos ledger categorize         # apply merchant rules and label new merchants
 focos holdings capture          # refresh holdings
+focos auth robinhood            # connect (or reconnect) Robinhood in agent mode
 focos ai test                   # check the AI key
 focos schedule status           # what is scheduled
 focos doctor                    # health checks with fixes
 focos update                    # install the newest release
 ```
+
+The dashboard has the same controls: a note box and reply buttons on the home page, Done buttons on the Plan
+page (goals, CPA agenda) and the Briefs page (decisions), and category pickers on the Wealth page. Every change
+is logged to `state/changes.jsonl`, shown under "Recent updates", and reported by the next brief under
+"What I updated".
 
 `focos --home <dir> ...` targets a different data folder.
 
@@ -78,7 +88,14 @@ focos update                    # install the newest release
 
 - **Agent mode** (`ai.mode: agent` in `config/focos.yml`): if Claude Code is installed, the brief writer reads the
   data files itself and can connect Robinhood's MCP server for live holdings, plus an optional, code-gated
-  trading sandbox (`config/sandbox_rules.yml`, off by default). See `agent/prompts/`.
+  trading sandbox (`config/sandbox_rules.yml`, off by default). See `agent/prompts/`. Connect Robinhood with
+  `focos auth robinhood`; a small daily keep-alive job (`schedule.keepalive`) refreshes the login so it does not
+  lapse over weekends, and `focos doctor` says when you need to sign in again.
+- **Learning over time**: expenses get a category from merchant rules (seeded for national chains, learned from
+  one small model call per run for new merchants, corrected by you on the Wealth page). Once most spending is
+  categorized, focos fills in or refines the profile's monthly core spending from the observed figures, slowly
+  and only with a log entry. Notes you leave are handled on the next run: facts become goal, agenda, profile,
+  or decision updates; questions get answered in the brief.
 - **Mercury**: business accounts that do not sync through SimpleFIN can be read straight from Mercury with a
   read-only API token (Setup > Banks, or `focos ledger mercury --token ...`).
 - **Config schema**: `focos config validate` checks every file; `focos config schema` exports JSON Schema.

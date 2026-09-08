@@ -7,7 +7,7 @@ import { SchemaForm } from "@/components/setup/SchemaForm";
 import { Msg, StepFrame, btnCls, btnQuietCls, inputCls } from "@/components/setup/StepFrame";
 
 type Proposal = { section: string; data: unknown; yaml: string; confidence: string; assumptions: string[]; errors: string[] };
-type Turn = { session_id: string; assistant_text: string; proposal: Proposal | null; finished: boolean; confirmed: string[]; remaining: string[]; cost_usd: number; over_budget: boolean };
+type Turn = { session_id: string; assistant_text: string; proposal: Proposal | null; finished: boolean; confirmed: string[]; remaining: string[]; over_budget: boolean };
 type Chat = { role: "user" | "assistant"; text: string };
 
 export function ProfileStep() {
@@ -51,7 +51,7 @@ export function ProfileStep() {
     setSid(t.session_id);
     setChat((c) => [...c, { role: "assistant", text: t.assistant_text }]);
     setYamlText(t.proposal?.yaml ?? "");
-    if (t.over_budget) setMsg({ kind: "warn", text: `Interview cost $${t.cost_usd.toFixed(2)} which is over the configured budget; you can finish with the forms.` });
+    if (t.over_budget) setMsg({ kind: "warn", text: "The interview reached its usage limit; you can finish with the forms." });
   };
   const start = async () => {
     setBusy(true); setChat([]);
@@ -153,7 +153,6 @@ export function ProfileStep() {
                 <div className="rounded-[6px] border border-hairline p-3 text-[11px] text-muted">
                   <div>Confirmed: {turn.confirmed.join(", ") || "—"}</div>
                   <div>Remaining: {turn.remaining.join(", ") || "—"}</div>
-                  <div>Cost so far: ${turn.cost_usd.toFixed(3)}</div>
                 </div>
               ) : null}
             </div>

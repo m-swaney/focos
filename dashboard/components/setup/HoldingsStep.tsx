@@ -95,7 +95,13 @@ export function HoldingsStep() {
         </div>
       ) : null}
       {choice === "robinhood_mcp" && !rh?.available ? (
-        <Msg kind="warn">Turn on agent mode in the AI step, then in a terminal run <code>claude</code> and <code>/mcp</code> to authorize Robinhood.</Msg>
+        <div className="mt-3 space-y-2">
+          <Msg kind="warn">
+            {rh?.reason ?? "Robinhood is not connected."} In a terminal run <code>focos auth robinhood</code>, finish the login in the browser, then check again.
+            Agent mode must be on in the AI step. Once connected, a daily keep-alive job keeps the login fresh.
+          </Msg>
+          <button type="button" className={btnQuietCls} disabled={busy} onClick={load}>Check again</button>
+        </div>
       ) : null}
       {choice !== "none" ? (
         <div className="mt-4 flex items-center gap-3">

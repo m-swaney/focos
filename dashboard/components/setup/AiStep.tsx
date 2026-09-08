@@ -11,7 +11,7 @@ const PROVIDERS = [
   { key: "ollama", label: "Ollama (local, free)", key_hint: "No key. Ollama must be running on this computer." },
 ];
 
-type Models = { defaults: Record<string, string>; pricing_per_mtok: Record<string, Record<string, { input: number; output: number }>>; keys: Record<string, [boolean, string]> };
+type Models = { defaults: Record<string, string>; keys: Record<string, [boolean, string]> };
 
 export function AiStep() {
   const [provider, setProvider] = useState("anthropic");
@@ -40,7 +40,6 @@ export function AiStep() {
   }, []);
 
   const keyState = models?.keys?.[provider];
-  const price = models?.pricing_per_mtok?.[provider]?.[model || models?.defaults?.[provider] || ""];
 
   const save = async () => {
     setBusy(true);
@@ -58,13 +57,13 @@ export function AiStep() {
     setBusy(true);
     const r = await api("/ai/test", { body: {} });
     setBusy(false);
-    setMsg(r.ok ? { kind: "ok", text: `Works: ${r.model} answered in ${r.latency_ms} ms (cost ${r.cost_usd == null ? "unknown" : `$${r.cost_usd.toFixed(4)}`}).` }
+    setMsg(r.ok ? { kind: "ok", text: `Works: ${r.model} answered in ${r.latency_ms} ms.` }
                 : { kind: "bad", text: r.error ?? "test failed" });
   };
 
   return (
     <StepFrame href="/setup/ai" title="Choose your AI" canNext={saved} onNext={apiKey ? save : undefined}
-      intro="The AI only ever sees the summary numbers focos computes and the profile you confirm, never account numbers or raw transactions. You pay the provider directly; a daily brief typically costs a few cents.">
+      intro="The AI only ever sees the summary numbers focos computes and the profile you confirm, never account numbers or raw transactions.">
       <div className="space-y-4">
         <div className="grid gap-2 sm:grid-cols-2">
           {PROVIDERS.map((p) => (
@@ -83,7 +82,7 @@ export function AiStep() {
             <input className={inputCls} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="http://localhost:11434/v1" />
           </Field>
         )}
-        <Field label="Model" hint={`Leave empty for the default (${models?.defaults?.[provider] ?? "…"})${price ? `, about $${price.input}/M input and $${price.output}/M output tokens` : ""}.`}>
+        <Field label="Model" hint={`Leave empty for the default (${models?.defaults?.[provider] ?? "…"}).`}>
           <input className={inputCls} value={model} onChange={(e) => setModel(e.target.value)} placeholder={models?.defaults?.[provider] ?? ""} />
         </Field>
         {agentAvailable ? (

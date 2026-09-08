@@ -18,7 +18,7 @@ def _token() -> str | None:
 
 
 def create_app(token: str | None = None) -> FastAPI:
-    from .routes import ai, config, doctor, holdings, interview, ledger, run, schedule, setup
+    from .routes import ai, config, doctor, holdings, inbox, interview, ledger, run, schedule, setup, updates
 
     app = FastAPI(title="focos local api", docs_url=None, redoc_url=None, openapi_url=None)
     expected = token if token is not None else _token()
@@ -46,7 +46,7 @@ def create_app(token: str | None = None) -> FastAPI:
     def health():
         return {"ok": True, "home": str(paths.HOME)}
 
-    for r in (setup, ai, ledger, holdings, interview, config, schedule, run, doctor):
+    for r in (setup, ai, ledger, holdings, interview, config, schedule, run, doctor, inbox, updates):
         app.include_router(r.router)
     return app
 

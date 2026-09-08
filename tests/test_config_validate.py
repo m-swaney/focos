@@ -26,6 +26,15 @@ def test_bad_timezone_and_regex(initialized_home: Path):
     assert any(p.startswith("debt_terms.0") for p in paths)
 
 
+def test_goal_status_and_tax_agenda_items():
+    assert validate_data("goals.yml", {"version": 2, "goals": [{"kind": "custom", "name": "X", "status": "done", "completed_on": "2026-01-02"}]}) == []
+    bad = validate_data("goals.yml", {"version": 2, "goals": [{"kind": "custom", "name": "X", "status": "finished"}]})
+    assert any(i.path.startswith("goals.0.status") for i in bad)
+    assert validate_data("profile.yml", {"version": 2, "tax_agenda": ["a string", {"id": "x", "text": "an item", "status": "done"}]}) == []
+    bad = validate_data("profile.yml", {"version": 2, "tax_agenda": [{"id": "x", "text": "t", "status": "maybe"}]})
+    assert any("status" in i.path for i in bad)
+
+
 def test_two_sandbox_roles_rejected():
     issues = validate_data("accounts.yml", {"version": 2, "brokerage": [
         {"key": "a", "label": "A", "role": "sandbox"}, {"key": "b", "label": "B", "role": "sandbox"}]})

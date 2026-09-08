@@ -1,7 +1,7 @@
 import { Icon } from "@/components/ui/Icon";
 import { StatusMark } from "@/components/ui";
 import { health } from "@/lib/data/status";
-import { ago, dateTime, money, relTime } from "@/lib/format";
+import { ago, dateTime, relTime } from "@/lib/format";
 
 const DOT: Record<string, string> = {
   ok: "bg-gain",
@@ -66,7 +66,6 @@ export function StatusPopover({ id, compact = false }: { id: string; compact?: b
                 <th className="label pb-1.5 text-left">Run</th>
                 <th className="label pb-1.5 text-left">Status</th>
                 <th className="label pb-1.5 text-left">Finished</th>
-                <th className="label pb-1.5 text-right">Cost</th>
               </tr>
             </thead>
             <tbody>
@@ -75,7 +74,6 @@ export function StatusPopover({ id, compact = false }: { id: string; compact?: b
                   <td className="py-1.5 capitalize">{mode}</td>
                   <td className="py-1.5">{run ? <StatusMark ok={run.ok} /> : <span className="text-muted">never</span>}</td>
                   <td className="py-1.5 text-secondary">{run?.finished ? dateTime(run.finished) : run?.started ? `started ${dateTime(run.started)}` : ""}</td>
-                  <td className="py-1.5 text-right">{run?.cost_usd != null ? money(run.cost_usd, 2) : ""}</td>
                 </tr>
               ))}
             </tbody>
@@ -90,7 +88,6 @@ export function StatusPopover({ id, compact = false }: { id: string; compact?: b
                 return (
                   <span key={k} className="inline-flex items-center gap-1">
                     <StatusMark ok={s.ok} label={name} />
-                    {s.cost_usd ? <span className="text-muted">{money(s.cost_usd, 2)}</span> : null}
                   </span>
                 );
               })}
@@ -110,6 +107,20 @@ export function StatusPopover({ id, compact = false }: { id: string; compact?: b
                     </span>
                   </li>
                 ))}
+                {h.keepalive ? (
+                  <li className="flex justify-between">
+                    <span>Robinhood keep-alive</span>
+                    <span className={h.keepalive.tone === "bad" ? "text-critical" : h.keepalive.tone === "warn" ? "text-warn" : "text-secondary"}>
+                      {h.keepalive.label}
+                      {h.keepalive.when ? ` ${relTime(h.keepalive.when)}` : ""}
+                    </span>
+                  </li>
+                ) : null}
+                {h.tokens.some((t) => t.label === "Robinhood access" && t.tone === "bad") ? (
+                  <li className="text-[11px] text-muted">
+                    Reconnect: run <code className="rounded-[3px] bg-panel-2 px-1 text-ink">focos auth robinhood</code> in a terminal.
+                  </li>
+                ) : null}
                 {h.subscription ? (
                   <li className="flex justify-between text-muted">
                     <span>Claude plan</span>

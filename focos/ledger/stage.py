@@ -48,6 +48,15 @@ def run(snapshot: dict | None, asof: str, mode: str, trigger_sync: bool = True, 
         pushed = broker_mirror.push_values(provider, snapshot) if snapshot else []
 
         accounts = [a.as_row() for a in provider.accounts()]
+        categorize_out = None
+        store = getattr(provider, "store", None)
+        if store is not None:
+            try:
+                from . import categorize
+                from . import entities as ent_mod
+                categorize_out = categorize.run(store, asof, entity_of=ent_mod.account_entity_map(accounts=accounts))
+            except Exception as e:  # noqa: BLE001  (labeling must never take the ledger down)
+                categorize_out = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
         start = date.fromisoformat(asof) - timedelta(days=WINDOW_DAYS)
         txs = [t.model_dump() for t in provider.transactions(start, date.fromisoformat(asof))]
         sync = provider.sync_status().model_dump()
@@ -59,6 +68,8 @@ def run(snapshot: dict | None, asof: str, mode: str, trigger_sync: bool = True, 
         consolidated, entities = consolidate.build(accounts, txs, snapshot, asof, sync)
         consolidated["pushed_valuations"] = pushed
         consolidated["provider"] = provider.name
+        if categorize_out is not None:
+            consolidated["categorize"] = {k: v for k, v in categorize_out.items() if k not in ("pending", "new_rules")}
         consolidated["pull"] = pull.model_dump() if pull else None
         if properties is not None:
             consolidated["properties_refresh"] = properties

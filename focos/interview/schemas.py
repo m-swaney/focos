@@ -6,7 +6,7 @@ from typing import Any, get_args, get_origin
 
 from pydantic import BaseModel, TypeAdapter
 
-from ..config.models import Goal, Profile
+from ..config.models import Goal, Profile, TaxAgendaItem
 from ..llm.base import ToolSpec
 
 PROFILE_SECTIONS = ["owner", "household", "spouse", "income", "spending", "cash_policy", "debt_terms", "retirement",
@@ -51,6 +51,9 @@ def _strip(schema: dict[str, Any]) -> dict[str, Any]:
 def section_schema(section: str) -> dict[str, Any]:
     if section == "goals":
         return {"type": "array", "items": _strip(Goal.model_json_schema())}
+    if section == "tax_agenda":
+        return {"type": "array", "items": {"anyOf": [{"type": "string"}, _strip(TaxAgendaItem.model_json_schema())]},
+                "description": "open questions for the CPA; a plain string per item is fine"}
     ann = Profile.model_fields[section].annotation
     if get_origin(ann) is list:
         (item,) = get_args(ann)

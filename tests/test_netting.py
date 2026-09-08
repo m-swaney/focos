@@ -55,6 +55,26 @@ def test_heuristic_pairing_on_corridor_and_unmatched_detection():
     assert abs(r["consolidated"]["expense"] - sum(e["expense"] for e in r["per_entity"].values())) < 1e-9
 
 
+def test_expense_by_category_and_buckets():
+    txs = [
+        dict(tx(1, "p-chk", -120, "ALDI"), category="groceries"),
+        dict(tx(2, "p-cc", -40, "STARBUCKS"), category="dining"),
+        dict(tx(3, "p-chk", -35, "MYSTERY SHOP")),
+        dict(tx(4, "t-merc", -99, "VERCEL"), category="subscriptions"),
+        tx(5, "p-chk", 3000, "Payroll"),
+    ]
+    r = netting.net(txs, ENTITY_OF, RULES, CORRIDORS, entity_kinds={"personal": "household", "shop": "business"})
+    p = r["per_entity"]["personal"]
+    assert p["expense_by_category"] == {"groceries": 120, "dining": 40, "uncategorized": 35}
+    assert p["core_expense"] == 120 and p["discretionary_expense"] == 40 and p["uncategorized_expense"] == 35
+    assert abs(sum(p["expense_by_category"].values()) - p["expense"]) < 1e-9
+    shop = r["per_entity"]["shop"]
+    assert shop["core_expense"] == 99 and shop["discretionary_expense"] == 0  # a business spends on operations
+    c = r["consolidated"]
+    assert c["expense_by_category"]["subscriptions"] == 99 and abs(sum(c["expense_by_category"].values()) - c["expense"]) < 1e-9
+    assert c["core_expense"] + c["discretionary_expense"] + c["uncategorized_expense"] == c["expense"]
+
+
 def test_balance_sheets_and_robinhood_no_double_count():
     accounts = [
         {"id": "p-chk", "name": "Checking", "balance": 5000, "classification": "asset", "account_type": "depository", "subtype": "checking"},

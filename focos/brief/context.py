@@ -104,6 +104,8 @@ def build(mode: str, date: str) -> Bundle:
     add = b.sections.append
     add(Section("profile", 100, _profile_subset(), "config/profile.yml"))
     add(Section("goals", 95, settings.goals_v2().get("goals") or [], "config/goals.yml"))
+    add(Section("inbox", 94, _latest("inbox.json") or {"notes": [], "recent_changes": []},
+                "notes from the owner, recent changes, open tax items, active goals"))
     add(Section("alerts", 92, _latest("alerts.json") or {"alerts": []}))
     add(Section("portfolio", 90, _trim_portfolio(_latest("portfolio.json")) or {"available": False}))
     add(Section("diff", 88, _latest("diff.json") or {"available": False}, "since the previous snapshot"))
@@ -127,7 +129,7 @@ def build(mode: str, date: str) -> Bundle:
 
 def fit(bundle: Bundle, max_input_tokens: int) -> Bundle:
     """Drop the lowest-priority sections until the bundle fits; never drops profile/alerts/portfolio."""
-    protected = {"profile", "alerts", "portfolio"}
+    protected = {"profile", "alerts", "portfolio", "inbox"}
     while bundle.tokens() > max_input_tokens:
         candidates = [s for s in bundle.sections if s.name not in protected]
         if not candidates:

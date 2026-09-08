@@ -30,6 +30,8 @@ spending:
   monthly_core_expenses: null    # rent/mortgage, food, utilities, insurance; excludes debt payments
   monthly_discretionary: null
   excludes_debt_payments: true
+  # focos fills or refines these from categorized bank data once enough history is labeled (see the Plan page);
+  # monthly_core_source and observed_asof record who set the figure last.
 
 cash_policy:
   emergency_fund_months: 3
@@ -58,7 +60,9 @@ protection:                      # null = unknown; false = a gap the plan should
   umbrella_liability: null
   disability: null
 
-tax_agenda: []                   # questions to bring to a CPA
+tax_agenda: []                   # questions to bring to a CPA; each is {id, text, status: open|done|dropped}
+                                 # (a plain string per item also works; focos gives it an id). Mark items done
+                                 # from the dashboard Plan page or `focos done tax <id>`.
 
 risk:
   tolerance: null                # conservative | moderate | aggressive

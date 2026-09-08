@@ -15,6 +15,59 @@ from ...ledger.providers.base import ManualAccountSpec
 router = APIRouter(prefix="/ledger")
 
 
+def _store():
+    from ... import paths
+    from ...ledger.providers.sqlite_store import SQLiteStore
+
+    return SQLiteStore(paths.LEDGER_DB) if paths.LEDGER_DB.exists() else None
+
+
+@router.get("/categories")
+def categories(days: int = 90):
+    from datetime import timedelta
+
+    from ...ledger import categories as cats
+
+    store = _store()
+    counts = store.category_counts((_date.today() - timedelta(days=days)).isoformat()) if store else {}
+    if store:
+        store.close()
+    return {"categories": list(cats.CATEGORIES), "core": sorted(cats.CORE), "discretionary": sorted(cats.DISCRETIONARY),
+            "definitions": cats.DEFINITIONS, "counts": counts}
+
+
+@router.get("/merchants")
+def merchants(uncategorized: int = 1, n: int = 50, days: int = 95):
+    from datetime import timedelta
+
+    store = _store()
+    if store is None:
+        return {"merchants": []}
+    try:
+        if uncategorized:
+            rows = store.uncategorized_merchants((_date.today() - timedelta(days=days)).isoformat(), _date.today().isoformat(), limit=n)
+        else:
+            rows = list(store.merchant_rules().values())[:n]
+    finally:
+        store.close()
+    return {"merchants": rows}
+
+
+class Rule(BaseModel):
+    merchant_key: str
+    category: str
+
+
+@router.post("/categories/rule")
+def set_rule(body: Rule):
+    from ...updates import apply as apply_mod
+
+    changes = apply_mod.apply([{"target": "merchant_rule", "id": body.merchant_key.strip().upper(), "category": body.category,
+                               "reason": "dashboard"}], actor="user", run="dashboard", date=_date.today().isoformat())
+    c = changes[0]
+    return {"ok": c["ok"], "error": c.get("error"), "change": dict(c, summary=apply_mod.describe(c))}
+
+
 def _accounts_payload():
     p = providers.current()
     if p is None:

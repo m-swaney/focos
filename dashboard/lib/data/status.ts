@@ -25,6 +25,7 @@ export interface Health {
   runs: { mode: Mode; run: RunStatus | undefined }[];
   tokens: TokenHealth[];
   subscription?: string | null;
+  keepalive?: { label: string; tone: Tone; when: string | null };
 }
 
 const STALE_HOURS = 30;
@@ -52,6 +53,12 @@ export function health(): Health {
         tokenHealth("Claude login", tk.claude_refresh_expires, now),
       ]
     : [];
+  const ka = tk?.keepalive ?? null;
+  const rh = tokens.find((x) => x.label === "Robinhood access");
+  if (rh && ka && ka.ok === false && ka.auth_error) rh.tone = "bad";
+  const keepalive = ka
+    ? { label: ka.ok ? (ka.refreshed ? "refreshed" : "ok") : ka.auth_error ? "login needed" : "failed", tone: (ka.ok ? "ok" : ka.auth_error ? "bad" : "warn") as Tone, when: ka.ts ?? null }
+    : undefined;
   const stageFailed = Object.values(daily?.stages ?? {}).some((s) => s && s.ok === false);
   const loginBad = tokens.find((x) => x.label === "Claude login")?.tone === "bad";
 
@@ -69,7 +76,7 @@ export function health(): Health {
     } else if (daily.ok == null) {
       tone = "warn";
       label = "Daily run in progress";
-    } else if (stageFailed || loginBad || tokens.some((x) => x.tone === "warn")) {
+    } else if (stageFailed || loginBad || tokens.some((x) => x.tone === "warn") || tokens.some((x) => x.tone === "bad")) {
       tone = "warn";
       label = "Daily run ok, attention needed";
     } else {
@@ -87,5 +94,6 @@ export function health(): Health {
     runs: (["daily", "weekly", "monthly"] as Mode[]).map((mode) => ({ mode, run: st[mode] })),
     tokens,
     subscription: tk?.subscription,
+    keepalive,
   };
 }

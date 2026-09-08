@@ -28,6 +28,24 @@ def test_run_jobs_from_config(initialized_home: Path):
     assert svc.schedule is None and svc.keep_alive and svc.argv[-2:] == ["serve", "--with-dashboard"]
 
 
+def test_keepalive_job_only_for_robinhood(initialized_home: Path):
+    assert "keepalive" not in {j.key for j in scheduler.run_jobs()}
+    (initialized_home / "config" / "focos.yml").write_text(yaml.safe_dump({"holdings": {"source": "robinhood_mcp"},
+                                                                          "schedule": {"keepalive": {"time": "08:30"}}}))
+    settings.reset()
+    jobs = {j.key: j for j in scheduler.run_jobs()}
+    k = jobs["keepalive"]
+    assert k.name == "focos-keepalive" and k.schedule.kind == "daily" and k.schedule.hour == 8 and k.schedule.minute == 30
+    assert k.argv[-2:] == ["holdings", "keepalive"] and k.time_limit_minutes == 10
+    xml = windows.task_xml(k, start=datetime(2026, 9, 5, 12, 0), user="u")
+    assert "<Saturday/>" in xml and "<Sunday/>" in xml and "holdings keepalive" in xml and "PT10M" in xml
+    assert launchd.plist_dict(k)["StartCalendarInterval"] == [{"Weekday": w, "Hour": 8, "Minute": 30} for w in (1, 2, 3, 4, 5, 6, 0)]
+    (initialized_home / "config" / "focos.yml").write_text(yaml.safe_dump({"holdings": {"source": "robinhood_mcp"},
+                                                                          "schedule": {"keepalive": {"enabled": False}}}))
+    settings.reset()
+    assert "keepalive" not in {j.key for j in scheduler.run_jobs()}
+
+
 def test_windows_xml(initialized_home: Path):
     jobs = {j.key: j for j in scheduler.run_jobs()}
     xml = windows.task_xml(jobs["daily"], start=datetime(2026, 9, 5, 12, 0), user="BOX\\ann")

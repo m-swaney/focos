@@ -11,9 +11,10 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
+from ..merchants import merchant_key
 from .base import BalancePoint, Holding, LedgerAccount, ManualAccountSpec, Transaction, now_iso
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY, provider TEXT NOT NULL, org_name TEXT, org_domain TEXT, name TEXT NOT NULL,
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS balances_daily (
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY, account_id TEXT NOT NULL, posted_date TEXT NOT NULL, amount REAL NOT NULL,
   description TEXT, payee TEXT, memo TEXT, pending INTEGER DEFAULT 0, superseded_by TEXT,
-  first_seen TEXT, last_seen TEXT, raw TEXT);
+  first_seen TEXT, last_seen TEXT, raw TEXT, merchant_key TEXT, category TEXT, category_source TEXT);
 CREATE INDEX IF NOT EXISTS ix_tx_acct_date ON transactions(account_id, posted_date);
 CREATE TABLE IF NOT EXISTS holdings (
   account_id TEXT NOT NULL, date TEXT NOT NULL, key TEXT NOT NULL, symbol TEXT, description TEXT, shares REAL,
@@ -37,7 +38,11 @@ CREATE TABLE IF NOT EXISTS pulls (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, provider TEXT, start_date TEXT, end_date TEXT,
   n_accounts INTEGER, n_tx INTEGER, errors TEXT);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS merchant_rules (
+  merchant_key TEXT PRIMARY KEY, category TEXT NOT NULL, source TEXT NOT NULL, confidence REAL, display_name TEXT,
+  created_at TEXT, updated_at TEXT, hits INTEGER DEFAULT 0);
 """
+TX_COLUMNS_V2 = ("merchant_key", "category", "category_source")
 PENDING_MATCH_DAYS = 5
 
 
@@ -50,7 +55,31 @@ class SQLiteStore:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=DELETE")
         self.conn.executescript(SCHEMA)
+        self._migrate()
+        self.conn.execute("CREATE INDEX IF NOT EXISTS ix_tx_merchant ON transactions(merchant_key)")
         self.set_meta("schema_version", str(SCHEMA_VERSION))
+
+    def _migrate(self) -> None:
+        """v1 -> v2: transactions gain merchant_key/category/category_source (backed up first, keys backfilled)."""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(transactions)").fetchall()}
+        missing = [c for c in TX_COLUMNS_V2 if c not in cols]
+        if not missing:
+            return
+        if self.conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]:
+            bdir = self.path.parent / "backups"
+            bdir.mkdir(parents=True, exist_ok=True)
+            self.backup(bdir / f"ledger-pre-v{SCHEMA_VERSION}-{date.today().isoformat()}.sqlite")
+        with self.conn:
+            for c in missing:
+                self.conn.execute(f"ALTER TABLE transactions ADD COLUMN {c} TEXT")
+        self.backfill_merchant_keys()
+
+    def backfill_merchant_keys(self) -> int:
+        rows = self.conn.execute("SELECT id, payee, description FROM transactions WHERE merchant_key IS NULL").fetchall()
+        with self.conn:
+            for r in rows:
+                self.conn.execute("UPDATE transactions SET merchant_key=? WHERE id=?", (merchant_key(r["payee"], r["description"]), r["id"]))
+        return len(rows)
 
     def close(self) -> None:
         self.conn.close()
@@ -138,12 +167,13 @@ class SQLiteStore:
                 exists = self.conn.execute("SELECT id FROM transactions WHERE id=?", (t["id"],)).fetchone()
                 self.conn.execute(
                     """INSERT INTO transactions(id, account_id, posted_date, amount, description, payee, memo, pending, superseded_by,
-                                                first_seen, last_seen, raw) VALUES(?,?,?,?,?,?,?,?,NULL,?,?,?)
+                                                first_seen, last_seen, raw, merchant_key) VALUES(?,?,?,?,?,?,?,?,NULL,?,?,?,?)
                        ON CONFLICT(id) DO UPDATE SET posted_date=excluded.posted_date, amount=excluded.amount,
                             description=excluded.description, payee=excluded.payee, memo=excluded.memo, pending=excluded.pending,
-                            last_seen=excluded.last_seen, raw=excluded.raw""",
+                            last_seen=excluded.last_seen, raw=excluded.raw, merchant_key=excluded.merchant_key""",
                     (t["id"], account_id, t["posted_date"], float(t["amount"]), t.get("description"), t.get("payee"), t.get("memo"),
-                     int(bool(t.get("pending"))), ts, ts, json.dumps(t.get("raw") or {}, default=str)))
+                     int(bool(t.get("pending"))), ts, ts, json.dumps(t.get("raw") or {}, default=str),
+                     merchant_key(t.get("payee"), t.get("description"))))
                 if exists:
                     updated += 1
                 else:
@@ -202,10 +232,68 @@ class SQLiteStore:
             acct_type = r["subtype"] or r["account_type"] or ""
             out.append(Transaction(id=r["id"], date=r["posted_date"], account_id=r["account_id"], account_name=r["account_name"],
                                    account_type=str(acct_type).lower(), amount=r["amount"], name=r["description"], merchant=r["payee"],
-                                   category=None, tags=[], transfer_id=raw.get("transfer_id") or None,
+                                   category=r["category"], merchant_key=r["merchant_key"], category_source=r["category_source"],
+                                   tags=[], transfer_id=raw.get("transfer_id") or None,
                                    other_account_id=raw.get("other_account_id") or None,
                                    external_id=r["id"].split(":")[-1], source=r["provider"], pending=bool(r["pending"])))
         return out
+
+    # ---- merchant rules and categories
+    def merchant_rules(self) -> dict[str, dict]:
+        return {r["merchant_key"]: dict(r) for r in self.conn.execute("SELECT * FROM merchant_rules ORDER BY merchant_key").fetchall()}
+
+    def merchant_rule(self, key: str) -> dict | None:
+        r = self.conn.execute("SELECT * FROM merchant_rules WHERE merchant_key=?", (key,)).fetchone()
+        return dict(r) if r else None
+
+    def set_merchant_rule(self, key: str, category: str, source: str, confidence: float | None = None, display_name: str | None = None) -> None:
+        ts = now_iso()
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO merchant_rules(merchant_key, category, source, confidence, display_name, created_at, updated_at, hits)
+                   VALUES(?,?,?,?,?,?,?,0)
+                   ON CONFLICT(merchant_key) DO UPDATE SET category=excluded.category, source=excluded.source, confidence=excluded.confidence,
+                        display_name=COALESCE(excluded.display_name, merchant_rules.display_name), updated_at=excluded.updated_at""",
+                (key, category, source, confidence, display_name, ts, ts))
+
+    def delete_merchant_rule(self, key: str) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM merchant_rules WHERE merchant_key=?", (key,))
+
+    def apply_category_rules(self, start: str) -> int:
+        """Copy each rule's category onto the transactions (posted on/after start) that carry its merchant key. Returns rows changed."""
+        with self.conn:
+            cur = self.conn.execute(
+                """UPDATE transactions
+                   SET category=(SELECT r.category FROM merchant_rules r WHERE r.merchant_key=transactions.merchant_key),
+                       category_source=(SELECT r.source FROM merchant_rules r WHERE r.merchant_key=transactions.merchant_key)
+                   WHERE posted_date >= ? AND merchant_key IN (SELECT merchant_key FROM merchant_rules)
+                     AND (category IS NULL OR category IS NOT (SELECT r.category FROM merchant_rules r WHERE r.merchant_key=transactions.merchant_key)
+                          OR category_source IS NOT (SELECT r.source FROM merchant_rules r WHERE r.merchant_key=transactions.merchant_key))""",
+                (start,))
+            return cur.rowcount
+
+    def uncategorized_merchants(self, start: str, end: str, limit: int = 60, stale_days: int = 30) -> list[dict]:
+        """Expense merchants in the window with no rule, or only a stale `uncategorized` rule. Most frequent first."""
+        stale_before = (date.today() - timedelta(days=stale_days)).isoformat()
+        rows = self.conn.execute(
+            """SELECT t.merchant_key, COUNT(*) AS n, MIN(t.description) AS sample_description, MIN(t.payee) AS sample_payee,
+                      AVG(ABS(t.amount)) AS avg_abs_amount, SUM(ABS(t.amount)) AS total,
+                      GROUP_CONCAT(DISTINCT COALESCE(a.subtype, a.account_type)) AS account_types, MIN(t.account_id) AS account_id
+               FROM transactions t JOIN accounts a ON a.id = t.account_id
+               LEFT JOIN merchant_rules r ON r.merchant_key = t.merchant_key
+               WHERE t.pending = 0 AND t.posted_date BETWEEN ? AND ? AND t.amount < 0
+                 AND t.merchant_key IS NOT NULL AND t.merchant_key != 'UNKNOWN'
+                 AND (r.merchant_key IS NULL OR (r.category = 'uncategorized' AND r.updated_at < ?))
+               GROUP BY t.merchant_key ORDER BY n DESC, avg_abs_amount DESC LIMIT ?""",
+            (start, end, stale_before, limit)).fetchall()
+        return [dict(r) for r in rows]
+
+    def category_counts(self, start: str | None = None) -> dict[str, dict]:
+        q = ("SELECT COALESCE(category, 'uncategorized') AS c, COUNT(*) AS n, SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS spend "
+             "FROM transactions WHERE pending = 0 AND amount < 0" + (" AND posted_date >= ?" if start else "") + " GROUP BY c ORDER BY spend DESC")
+        rows = self.conn.execute(q, (start,) if start else ()).fetchall()
+        return {r["c"]: {"n": r["n"], "spend": round(r["spend"] or 0.0, 2)} for r in rows}
 
     # ---- legacy history and account identity
     def providers_present(self) -> list[str]:
@@ -365,4 +453,4 @@ class SQLiteStore:
 
     def counts(self) -> dict:
         return {t: self.conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-                for t in ("accounts", "balances_daily", "transactions", "holdings", "manual_accounts", "pulls")}
+                for t in ("accounts", "balances_daily", "transactions", "holdings", "manual_accounts", "pulls", "merchant_rules")}

@@ -13,7 +13,7 @@ class FakeSource:
 
     def __init__(self, ok=True, fail=False):
         self._ok, self._fail = ok, fail
-        self.last_meta = {"cost_usd": 0.5}
+        self.last_meta = {"num_turns": 3}
 
     def available(self):
         return (True, None) if self._ok else (False, "not connected")
@@ -40,7 +40,7 @@ class FakeWriter:
         (paths.REPORTS / mode / f"{date}.md").write_text("# brief\n", encoding="utf-8")
         payload = {"summary_line": "fine", "report_path": f"reports/{mode}/{date}.md", "alerts": [], "needs_user": []}
         settings.write_json(paths.LATEST / "brief_result.json", payload)
-        return BriefOutcome(ok=True, result=payload, report_path=payload["report_path"], cost_usd=0.1)
+        return BriefOutcome(ok=True, result=payload, report_path=payload["report_path"])
 
 
 def test_full_cycle_with_fakes(initialized_home: Path, monkeypatch):
@@ -52,7 +52,7 @@ def test_full_cycle_with_fakes(initialized_home: Path, monkeypatch):
     st = status.get()["daily"]
     assert st["ok"] is True and st["stages"]["A"]["ok"] and st["stages"]["C"]["ok"]
     assert st["summary_line"] == "fine" and st["report_path"] == "reports/daily/2026-03-01.md"
-    assert abs(st["cost_usd"] - 0.6) < 1e-9
+    assert "cost_usd" not in st and "cost_usd" not in st["stages"]["A"]
     assert Path(res.log_file).exists()
 
 

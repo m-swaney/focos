@@ -8,7 +8,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from .models import HOUSEHOLD
+from .models import HOUSEHOLD, tax_agenda_items
 
 V1_ROLE = {"taxable": "taxable", "roth_ira": "roth_ira", "sandbox": "sandbox", "traditional_ira": "traditional_ira"}
 DEFAULT_TZ = "America/New_York"
@@ -87,6 +87,7 @@ def profile_v2(raw: dict[str, Any] | None, entities: dict[str, Any] | None = Non
         out = copy.deepcopy(raw)
         out.setdefault("version", 2)
         out.setdefault("household", {}).setdefault("timezone", DEFAULT_TZ)
+        out["tax_agenda"] = tax_agenda_items(out.get("tax_agenda") or [])
         return out
     out = copy.deepcopy(raw)
     person = out.pop("person", None) or {}
@@ -128,6 +129,7 @@ def profile_v2(raw: dict[str, Any] | None, entities: dict[str, Any] | None = Non
     cash = dict(out.get("cash_policy") or {})
     cash.setdefault("business_cash_is_reserve", biz is not None)
     out["cash_policy"] = cash
+    out["tax_agenda"] = tax_agenda_items(out.get("tax_agenda") or [])
     return out
 
 

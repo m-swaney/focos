@@ -45,4 +45,4 @@ def status():
 
 @router.post("/uninstall")
 def uninstall():
-    return {"removed": scheduler.current().uninstall([scheduler.JOB_NAMES[k] for k in ("daily", "weekly", "monthly")])}
+    return {"removed": scheduler.current().uninstall([scheduler.JOB_NAMES[k] for k in ("daily", "weekly", "monthly", "keepalive")])}

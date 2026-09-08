@@ -119,7 +119,7 @@ def run(opts: RunOptions) -> RunResult:
             snap = src.capture(date, opts.mode, run_id)
             meta = getattr(src, "last_meta", {}) or {}
             n_acc = len((snap or {}).get("accounts", []))
-            status.stage(opts.mode, "A", True, cost_usd=meta.get("cost_usd"),
+            status.stage(opts.mode, "A", True,
                          extra={**meta, "source": src.name, "accounts": n_acc, "total_value": (snap or {}).get("total_value")})
             res.stages["A"] = f"ok ({src.name}, {n_acc} accounts)"
         except (SourceError, Exception) as e:  # noqa: BLE001
@@ -160,7 +160,7 @@ def run(opts: RunOptions) -> RunResult:
         writer = writer_for(cfg.get("ai"))
         log.info("Stage C: brief via %s mode", writer.mode_name)
         outcome = writer.write(opts.mode, date, run_id)
-        status.stage(opts.mode, "C", outcome.ok, outcome.error, cost_usd=outcome.cost_usd, extra=outcome.meta)
+        status.stage(opts.mode, "C", outcome.ok, outcome.error, extra=outcome.meta)
         if outcome.ok:
             res.stages["C"] = f"ok ({outcome.report_path})"
         else:
@@ -169,6 +169,14 @@ def run(opts: RunOptions) -> RunResult:
             res.stages["C"] = f"failed: {outcome.error}"
 
     # ---- backup (weekly/monthly)
+    if opts.mode == "monthly":
+        try:
+            from .. import inbox
+            moved = inbox.compact()
+            if moved:
+                log.info("inbox: archived %d resolved note(s)", moved)
+        except Exception as e:  # noqa: BLE001
+            log.warning("inbox compaction skipped: %s", e)
     if opts.mode != "daily":
         bk = _ledger_backup(date)
         if bk:

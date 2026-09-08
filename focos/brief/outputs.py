@@ -1,6 +1,7 @@
 """Files a brief run produces: the markdown report, decisions.jsonl entries, sandbox proposal files."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import date as _date
@@ -43,16 +44,54 @@ def write_report(mode: str, date: str, markdown: str) -> str:
     return report_rel(mode, date)
 
 
-def recent_decisions(n: int = 20) -> list[dict]:
+def decision_id(date: str, text: str) -> str:
+    """Stable id for a decision line; legacy lines without one get it on read, so the dashboard and the model agree."""
+    return hashlib.sha1(f"{date}|{text}".encode("utf-8")).hexdigest()[:8]
+
+
+def all_decisions() -> list[dict]:
     if not paths.DECISIONS.exists():
         return []
     rows = []
-    for line in paths.DECISIONS.read_text(encoding="utf-8", errors="replace").splitlines()[-n:]:
+    for line in paths.DECISIONS.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
-            rows.append(json.loads(line))
+            row = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if isinstance(row, dict):
+            if not row.get("id") and row.get("kind") != "resolution":
+                row["id"] = decision_id(str(row.get("date") or ""), str(row.get("text") or ""))
+            rows.append(row)
     return rows
+
+
+def decision_status(rows: list[dict] | None = None) -> dict[str, str]:
+    """id -> acted|retired|standing from the latest resolution line that references it."""
+    out: dict[str, str] = {}
+    for r in rows if rows is not None else all_decisions():
+        if r.get("kind") == "resolution" and r.get("ref") and r.get("status"):
+            out[str(r["ref"])] = str(r["status"])
+    return out
+
+
+def recent_decisions(n: int = 20) -> list[dict]:
+    """The last n entries with ids and, for recommendations/proposals, their current status."""
+    rows = all_decisions()
+    status = decision_status(rows)
+    out = []
+    for r in rows[-n:]:
+        if r.get("kind") != "resolution":
+            r = dict(r, status=status.get(str(r.get("id")), "open"))
+        out.append(r)
+    return out
+
+
+def append_resolution(ref: str, status: str, note: str, date: str, run: str, actor: str = "user") -> dict:
+    paths.DECISIONS.parent.mkdir(parents=True, exist_ok=True)
+    entry = {"date": date, "run": run, "kind": "resolution", "ref": ref, "status": status, "text": note or "", "by": actor}
+    with paths.DECISIONS.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+    return entry
 
 
 def append_decisions(rows: list[dict], date: str, mode: str) -> int:
@@ -64,8 +103,10 @@ def append_decisions(rows: list[dict], date: str, mode: str) -> int:
         for r in rows:
             if not isinstance(r, dict) or not r.get("text"):
                 continue
-            entry = {"date": r.get("date") or date, "run": r.get("run") or mode, "kind": r.get("kind") or "recommendation",
-                     "text": str(r["text"]), "evidence": r.get("evidence") or "", "review_on": r.get("review_on") or None}
+            d = r.get("date") or date
+            entry = {"id": r.get("id") or decision_id(str(d), str(r["text"])), "date": d, "run": r.get("run") or mode,
+                     "kind": r.get("kind") or "recommendation", "text": str(r["text"]), "evidence": r.get("evidence") or "",
+                     "review_on": r.get("review_on") or None}
             f.write(json.dumps(entry) + "\n")
             n += 1
     return n

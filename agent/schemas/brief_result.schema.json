@@ -19,6 +19,18 @@
     },
     "needs_user": {"type": "array", "items": {"type": "string"}},
     "decisions_logged": {"type": "integer"},
+    "updates": {
+      "type": "array",
+      "description": "structured updates for the harness to apply (see agent/schemas/updates.schema.json)",
+      "items": {"type": "object", "required": ["target"], "properties": {"target": {"type": "string"}}}
+    },
+    "note_replies": {
+      "type": "array",
+      "items": {"type": "object", "required": ["note_id", "reply"],
+                "properties": {"note_id": {"type": "string"}, "reply": {"type": "string"}}}
+    },
+    "updates_file": {"type": ["string", "null"], "description": "agent mode: state/updates/<run_id>.json when written"},
+    "updates_applied": {"type": "integer"},
     "proposals": {"type": "array", "items": {"type": "string"}},
     "trades_placed": {"type": "array", "items": {"type": "string"}},
     "decisions": {

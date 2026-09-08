@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from ... import settings
 from ...config import writer
 from ...llm import DEFAULT_MODELS, KEY_ENV, LLMError, key_status, provider_for
-from ...llm.cost import table
 
 router = APIRouter(prefix="/ai")
 
@@ -24,7 +23,7 @@ class Configure(BaseModel):
 
 @router.get("/models")
 def models():
-    return {"defaults": DEFAULT_MODELS, "pricing_per_mtok": table(), "keys": {n: key_status(n) for n in DEFAULT_MODELS}}
+    return {"defaults": DEFAULT_MODELS, "keys": {n: key_status(n) for n in DEFAULT_MODELS}}
 
 
 @router.post("/configure")
@@ -61,4 +60,4 @@ def test():
     except LLMError as e:
         return {"ok": False, "provider": p.name, "model": p.model, "error": str(e)}
     return {"ok": True, "provider": p.name, "model": c.model or p.model, "latency_ms": int((time.time() - t0) * 1000),
-            "cost_usd": c.cost_usd, "reply": c.text.strip()[:40]}
+            "reply": c.text.strip()[:40]}

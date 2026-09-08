@@ -24,6 +24,7 @@ class Order(BaseModel):
 class BrokerAdapter(Protocol):
     name: str
     mcp_server_name: str
+    mcp_server_url: str
     market_tz: str
 
     def mcp_config(self) -> dict: ...

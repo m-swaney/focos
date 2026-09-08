@@ -9,6 +9,7 @@ Read these files first (paths are relative to the repo root):
 - `state/derived/latest/catalysts.json` (earnings and news pulled this run)
 - `state/derived/latest/sandbox.json` (mode, positions, scorecard, run counter)
 - `state/derived/latest/consolidated.json` if it exists (entities and cash; absent until the ledger is live)
+- `state/derived/latest/inbox.json` (notes from {{OWNER}} for you, recent changes, open tax items, active goals)
 - The previous daily brief: `{{PREV_BRIEF}}` (may not exist)
 - The last 20 lines of `state/decisions.jsonl` (may not exist)
 
@@ -22,5 +23,8 @@ fields `ref_id, date, symbol, side, dollar_amount, thesis, entry_reason, stop_lo
 horizon_days, paper: true`. Only propose when you have a specific, evidence-backed reason; "no
 proposal" is a fine outcome and should be stated. In `live` mode, follow the same proposal step, then
 use `review_equity_order` and `place_equity_order` only for proposals that pass the gate.
+
+Notes and updates: handle every note in `inbox.json` per your system prompt. Write structured updates and
+note replies to `state/updates/{{RUN_ID}}.json` when you have any.
 
 Finish by appending decisions to `state/decisions.jsonl` and returning the structured result.

@@ -76,6 +76,7 @@ class AgentBudget(_Lenient):
     daily: float = 5.0
     weekly: float = 10.0
     monthly: float = 12.0
+    keepalive: float = 0.25
 
 
 class AgentSettings(_Lenient):
@@ -84,6 +85,8 @@ class AgentSettings(_Lenient):
     model_snapshot: str = "sonnet"
     model_daily: str = "sonnet"
     model_heavy: str = "opus"
+    model_keepalive: str = "haiku"
+    debug_claude: bool = False          # also write --debug-file traces for Stage A/C runs
     budget_usd: AgentBudget = AgentBudget()
 
 
@@ -111,6 +114,13 @@ class MonthlySchedule(_Lenient):
     _t = field_validator("time", mode="before")(_coerce_time)
 
 
+class KeepaliveSchedule(_Lenient):
+    """Daily broker-token refresh (only installed when holdings.source is robinhood_mcp)."""
+    enabled: bool = True
+    time: str = "09:00"
+    _t = field_validator("time", mode="before")(_coerce_time)
+
+
 _TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
@@ -118,10 +128,11 @@ class ScheduleSettings(_Lenient):
     daily: DailySchedule = DailySchedule()
     weekly: WeeklySchedule = WeeklySchedule()
     monthly: MonthlySchedule = MonthlySchedule()
+    keepalive: KeepaliveSchedule = KeepaliveSchedule()
 
     @model_validator(mode="after")
     def _times(self):
-        for name in ("daily", "weekly", "monthly"):
+        for name in ("daily", "weekly", "monthly", "keepalive"):
             t = getattr(self, name).time
             if not _TIME.match(str(t)):
                 raise ValueError(f"schedule.{name}.time must be HH:MM (24h), got {t!r}")
@@ -206,6 +217,8 @@ class Spending(_Lenient):
     monthly_core_expenses: float | None = None
     monthly_discretionary: float | None = None
     excludes_debt_payments: bool = True
+    monthly_core_source: Literal["user", "observed"] | None = None   # who set the figure last
+    observed_asof: date | None = None                                 # when focos last refined it from the ledger
 
 
 class CashPolicy(_Lenient):
@@ -267,6 +280,51 @@ class Risk(_Lenient):
     notes: str | None = None
 
 
+def slug(text: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return s or "goal"
+
+
+class TaxAgendaItem(_Lenient):
+    """One open question for the CPA. Bare strings (pre-v3) are accepted and given an id."""
+    id: str
+    text: str
+    status: Literal["open", "done", "dropped"] = "open"
+    added_on: date | None = None
+    done_on: date | None = None
+    notes: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_string(cls, v):
+        if isinstance(v, str):
+            return {"id": slug(v)[:48], "text": v}
+        if isinstance(v, dict) and not v.get("id") and v.get("text"):
+            return {**v, "id": slug(str(v["text"]))[:48]}
+        return v
+
+
+def tax_agenda_items(raw: list) -> list[dict]:
+    """Normalize a tax_agenda list (strings and/or items) to plain item dicts with unique ids."""
+    out: list[dict] = []
+    seen: set[str] = set()
+    for x in raw or []:
+        if isinstance(x, str):
+            item = {"id": slug(x)[:48], "text": x, "status": "open"}
+        elif isinstance(x, dict) and x.get("text"):
+            item = {"id": str(x.get("id") or slug(str(x["text"]))[:48]), "text": str(x["text"]),
+                    "status": str(x.get("status") or "open"), **{k: x[k] for k in ("added_on", "done_on", "notes") if x.get(k) is not None}}
+        else:
+            continue
+        base, n = item["id"], 2
+        while item["id"] in seen:
+            item["id"] = f"{base}_{n}"
+            n += 1
+        seen.add(item["id"])
+        out.append(item)
+    return out
+
+
 class Profile(_Lenient):
     version: int = 2
     owner: Owner = Owner()
@@ -280,7 +338,7 @@ class Profile(_Lenient):
     retirement: Retirement = Retirement()
     family: Family = Family()
     protection: Protection = Protection()
-    tax_agenda: list[str] = []
+    tax_agenda: list[TaxAgendaItem] = []
     risk: Risk = Risk()
     targets: dict[str, dict[str, float]] = {}
 
@@ -297,11 +355,6 @@ class Profile(_Lenient):
 GoalKind = Literal["emergency_fund", "debt_payoff", "retirement_contribution", "purchase", "custom"]
 
 
-def slug(text: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
-    return s or "goal"
-
-
 class Goal(_Lenient):
     id: str | None = None
     kind: GoalKind = "custom"
@@ -312,6 +365,8 @@ class Goal(_Lenient):
     funded_by: list[str] = []
     params: dict[str, Any] = {}
     notes: str | None = None
+    status: Literal["active", "done", "paused"] = "active"
+    completed_on: date | None = None
 
     @model_validator(mode="after")
     def _fill_id(self):

@@ -78,21 +78,21 @@ def ingest_claude(stage: str = typer.Option(..., help="A or C"), file: Path = ty
     meta = claude_io.summarize(result)
     if meta["is_error"]:
         err = str(result.get("result") or result.get("error") or meta.get("subtype") or "claude reported is_error")
-        status.stage(mode, stage, False, err[:500], cost_usd=meta["cost_usd"], extra=meta)
+        status.stage(mode, stage, False, err[:500], extra=meta)
         typer.echo(f"Stage {stage} error: {err[:500]}", err=True)
         raise typer.Exit(2)
     text = result.get("result") or ""
     try:
         payload = claude_io.extract_json(text)
     except Exception as e:
-        status.stage(mode, stage, False, f"no JSON in result: {e}", cost_usd=meta["cost_usd"], extra=meta)
+        status.stage(mode, stage, False, f"no JSON in result: {e}", extra=meta)
         (paths.LOGS / f"{date}-{mode}-{stage}-result.txt").write_text(text, encoding="utf-8")
         raise typer.Exit(2)
 
     if stage.upper() == "A":
         errors = rh.validate(payload)
         if errors:
-            status.stage(mode, "A", False, "schema: " + "; ".join(errors[:5]), cost_usd=meta["cost_usd"], extra=meta)
+            status.stage(mode, "A", False, "schema: " + "; ".join(errors[:5]), extra=meta)
             typer.echo("\n".join(errors), err=True)
             raise typer.Exit(2)
         raw_path = paths.RAW / f"{date}-{mode}.json"
@@ -101,15 +101,13 @@ def ingest_claude(stage: str = typer.Option(..., help="A or C"), file: Path = ty
         snap["source"] = "robinhood_mcp"
         from . import holdings
         snap_path = holdings.write_snapshot(snap)
-        status.stage(mode, "A", True, cost_usd=meta["cost_usd"],
-                     extra={**meta, "accounts": len(snap["accounts"]), "total_value": snap["total_value"]})
-        _echo({"snapshot": str(snap_path), "accounts": len(snap["accounts"]),
-               "total_value": snap["total_value"], "cost_usd": meta["cost_usd"]})
+        status.stage(mode, "A", True, extra={**meta, "accounts": len(snap["accounts"]), "total_value": snap["total_value"]})
+        _echo({"snapshot": str(snap_path), "accounts": len(snap["accounts"]), "total_value": snap["total_value"]})
     else:
         settings.write_json(paths.LATEST / "brief_result.json", {**payload, "_meta": meta, "date": date, "mode": mode})
-        status.stage(mode, "C", True, cost_usd=meta["cost_usd"], extra=meta)
+        status.stage(mode, "C", True, extra=meta)
         _echo({"summary_line": payload.get("summary_line"), "report_path": payload.get("report_path"),
-               "alerts": len(payload.get("alerts", [])), "cost_usd": meta["cost_usd"]})
+               "alerts": len(payload.get("alerts", []))})
 
 
 @app.command()
@@ -164,13 +162,13 @@ def run_cycle(mode: str = typer.Option("daily", help="daily | weekly | monthly")
         raise typer.Exit(1)
 
 
-ai_app = typer.Typer(no_args_is_help=True, help="AI provider (api mode): test the key, list defaults, estimate cost.")
+ai_app = typer.Typer(no_args_is_help=True, help="AI provider (api mode): test the key, list defaults, estimate context size.")
 app.add_typer(ai_app, name="ai")
 
 
 @ai_app.command("test")
 def ai_test(provider: str = typer.Option(None, help="override focos.yml ai.provider"), model: str = typer.Option(None)) -> None:
-    """Make one tiny call with the configured provider and report latency and cost."""
+    """Make one tiny call with the configured provider and report latency."""
     import time
 
     from .llm import LLMError, key_status, provider_for
@@ -192,21 +190,20 @@ def ai_test(provider: str = typer.Option(None, help="override focos.yml ai.provi
         _echo({"ok": False, "provider": p.name, "model": p.model, "error": str(e)})
         raise typer.Exit(2)
     _echo({"ok": True, "provider": p.name, "model": c.model or p.model, "latency_ms": int((time.time() - t0) * 1000),
-           "reply": c.text.strip()[:40], "usage": c.usage.model_dump(), "cost_usd": c.cost_usd})
+           "reply": c.text.strip()[:40], "usage": c.usage.model_dump()})
 
 
 @ai_app.command("models")
 def ai_models() -> None:
-    """Default model per provider and the pricing table this build knows about."""
+    """Default model per provider."""
     from .llm import DEFAULT_MODELS
-    from .llm.cost import table
 
-    _echo({"defaults": DEFAULT_MODELS, "pricing_per_mtok": table()})
+    _echo({"defaults": DEFAULT_MODELS})
 
 
 @ai_app.command("estimate")
 def ai_estimate(mode: str = "daily", date: str = typer.Option(None)) -> None:
-    """Estimate the context size and cost of an api-mode brief from the current derived data (no API call)."""
+    """Estimate the context size of an api-mode brief from the current derived data (no API call)."""
     from .brief import context
     from .llm import provider_for
 
@@ -216,8 +213,7 @@ def ai_estimate(mode: str = "daily", date: str = typer.Option(None)) -> None:
     p = provider_for(ai, heavy=(mode != "daily"))
     est_in, est_out = bundle.tokens() + 2500, 3000
     _echo({"provider": p.name, "model": p.model, "sections": [s.name for s in bundle.sections], "dropped": bundle.dropped,
-           "input_tokens_est": est_in, "output_tokens_est": est_out, "cost_usd_est": p.estimate_cost(est_in, est_out),
-           "budget_usd": (ai.get("budget_usd") or {}).get(mode)})
+           "input_tokens_est": est_in, "output_tokens_est": est_out})
 
 
 schedule_app = typer.Typer(no_args_is_help=True, help="Scheduled runs (Task Scheduler on Windows, launchd on macOS).")
@@ -395,6 +391,135 @@ def holdings_show() -> None:
            "accounts": [{"key": a["key"], "role": a.get("brokerage_account_type"), "last4": a.get("last4"),
                          "positions": len(a.get("positions", [])),
                          "total_value": (a.get("portfolio") or {}).get("total_value")} for a in cur.get("accounts", [])]})
+
+
+@holdings_app.command("keepalive")
+def holdings_keepalive(date: str = typer.Option(None)) -> None:
+    """Refresh the Robinhood login with one cheap read call (installed as a daily job so the token never lapses)."""
+    from .holdings import keepalive
+
+    rec = keepalive.run(date)
+    _echo({k: rec.get(k) for k in ("date", "ok", "auth_error", "refreshed", "duration_ms", "error")}
+          | {"expires_at": (rec.get("token_after") or {}).get("expires_at")})
+    if not rec["ok"]:
+        raise typer.Exit(1)
+
+
+auth_app = typer.Typer(no_args_is_help=True, help="Broker and agent logins.")
+app.add_typer(auth_app, name="auth")
+
+
+@auth_app.command("robinhood")
+def auth_robinhood(no_browser: bool = typer.Option(False, "--no-browser", help="print the authorization URL instead of opening a browser")) -> None:
+    """Connect Robinhood: register its MCP server with Claude Code and run the login flow in this terminal."""
+    from .holdings import auth
+
+    raise typer.Exit(auth.robinhood(no_browser=no_browser, echo=typer.echo))
+
+
+note_app = typer.Typer(invoke_without_command=True, help="Leave a note for your chief of staff; the next run reads it.")
+app.add_typer(note_app, name="note")
+
+
+def _parse_about(about: str | None) -> dict | None:
+    if not about:
+        return None
+    kind, _, ident = about.partition(":")
+    kind = {"tax": "tax_agenda"}.get(kind, kind)
+    return {"type": kind, **({"id": ident} if ident else {})}
+
+
+@note_app.callback()
+def note_main(ctx: typer.Context, text: list[str] = typer.Argument(None),
+              about: str = typer.Option(None, help="what it concerns: goal:<id>, tax:<id>, decision:<id>, question")) -> None:
+    """`focos note "the withholding is fixed"`: saved now, read by the next brief run."""
+    if ctx.invoked_subcommand:
+        return
+    if not text:
+        typer.echo(ctx.get_help())
+        raise typer.Exit(0)
+    from . import inbox
+
+    _echo(inbox.add(" ".join(text), about=_parse_about(about), source="cli"))
+
+
+@note_app.command("add")
+def note_add(text: list[str] = typer.Argument(...), about: str = typer.Option(None)) -> None:
+    """Same as `focos note "<text>"`."""
+    from . import inbox
+
+    _echo(inbox.add(" ".join(text), about=_parse_about(about), source="cli"))
+
+
+@note_app.command("list")
+def note_list(n: int = 20) -> None:
+    """Recent notes and their status (pending, consumed, applied, answered, dismissed)."""
+    from . import inbox
+
+    _echo({"pending": len(inbox.pending()), "unaddressed": [r["id"] for r in inbox.unaddressed()], "notes": inbox.recent(n)})
+
+
+@note_app.command("dismiss")
+def note_dismiss(note_id: str) -> None:
+    from . import inbox
+
+    note = inbox.dismiss(note_id)
+    if note is None:
+        typer.echo(f"no note {note_id}", err=True)
+        raise typer.Exit(1)
+    _echo(note)
+
+
+done_app = typer.Typer(no_args_is_help=True, help="Mark a goal, tax-agenda item, or decision as done.")
+app.add_typer(done_app, name="done")
+
+
+def _apply_user(updates: list[dict]) -> None:
+    from .updates import apply as apply_mod
+
+    changes = apply_mod.apply(updates, actor="user", run="cli", date=_date.today().isoformat())
+    _echo([{"ok": c["ok"], "summary": apply_mod.describe(c)} for c in changes])
+    if not all(c["ok"] for c in changes):
+        raise typer.Exit(1)
+
+
+@done_app.command("goal")
+def done_goal(goal_id: str, on: str = typer.Option(None, help="completion date YYYY-MM-DD"), pause: bool = typer.Option(False, "--pause")) -> None:
+    st = {"status": "paused"} if pause else {"status": "done", **({"completed_on": on} if on else {})}
+    _apply_user([{"target": "goal", "id": goal_id, "set": st, "reason": "focos done goal"}])
+
+
+@done_app.command("tax")
+def done_tax(item_id: str, drop: bool = typer.Option(False, "--drop", help="drop instead of done"), note: str = typer.Option(None)) -> None:
+    st = {"status": "dropped" if drop else "done", **({"notes": note} if note else {})}
+    _apply_user([{"target": "tax_agenda", "id": item_id, "set": st, "reason": "focos done tax"}])
+
+
+@done_app.command("decision")
+def done_decision(decision_id: str, status: str = typer.Option("acted", help="acted | retired | standing"), note: str = typer.Option("")) -> None:
+    _apply_user([{"target": "decision", "id": decision_id, "set": {"status": status, "note": note}, "reason": "focos done decision"}])
+
+
+reopen_app = typer.Typer(no_args_is_help=True, help="Reopen a goal or tax-agenda item.")
+app.add_typer(reopen_app, name="reopen")
+
+
+@reopen_app.command("goal")
+def reopen_goal(goal_id: str) -> None:
+    _apply_user([{"target": "goal", "id": goal_id, "set": {"status": "active"}, "reason": "focos reopen goal"}])
+
+
+@reopen_app.command("tax")
+def reopen_tax(item_id: str) -> None:
+    _apply_user([{"target": "tax_agenda", "id": item_id, "set": {"status": "open"}, "reason": "focos reopen tax"}])
+
+
+@app.command()
+def changes(n: int = 20, days: int = typer.Option(None)) -> None:
+    """What changed in goals, the tax agenda, profile notes, spending, and decisions, and who changed it."""
+    from .updates import apply as apply_mod
+
+    _echo([{k: c.get(k) for k in ("ts", "actor", "run", "ok", "summary", "reason")} for c in reversed(apply_mod.recent_changes(n, days))])
 
 
 agent_app = typer.Typer(no_args_is_help=True, help="Claude Code agent-mode plumbing.")

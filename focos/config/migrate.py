@@ -50,7 +50,7 @@ def needs_migration(home: Path) -> bool:
 
 
 def run(home: Path, dry_run: bool = False) -> dict:
-    from . import migrate_v2  # noqa: F401  (registers the v1 -> v2 step)
+    from . import migrate_v2, migrate_v3  # noqa: F401  (register the v1 -> v2 and v2 -> v3 steps)
 
     start = home_version(home)
     cur = start

@@ -1,10 +1,12 @@
 import { GroupedBarChart, type BarPoint } from "@/components/charts/GroupedBarChart";
+import { CategoryPicker } from "@/components/ledger/CategoryPicker";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { Empty, EntityDot, EntityTag, Figure, FigureStrip, Note, PageHeader, Panel, Section, Severity } from "@/components/ui";
 import { ShowMore } from "@/components/ui/ShowMore";
 import { consolidated, entitiesData, plan, properties } from "@/lib/data/latest";
 import { series } from "@/lib/data/series";
 import { dateShort, dateTime, humanize, money, num, plural, signed, tone } from "@/lib/format";
+import { CATEGORY_LABEL } from "@/lib/categories";
 import { accountLabel, entities, entity } from "@/lib/labels";
 import type { CashFlowWindow, Debt, LedgerAccount } from "@/lib/types";
 
@@ -43,6 +45,11 @@ export default function Wealth() {
   const unmatched = cf30?.unmatched ?? [];
   const sync = cons.ledger_sync;
   const pushed = cons.pushed_valuations ?? [];
+  const sp = cons.spending;
+  const catRows = entityKeys
+    .map((k) => ({ key: k, cats: Object.entries(cf90?.per_entity[k]?.expense_by_category ?? {}).sort((a, b) => b[1] - a[1]), total: cf90?.per_entity[k]?.expense ?? 0 }))
+    .filter((r) => r.cats.length);
+  const uncategorized90 = sp?.top_uncategorized ?? [];
 
   return (
     <>
@@ -105,6 +112,52 @@ export default function Wealth() {
           })}
         </div>
       </Section>
+
+      {catRows.length ? (
+        <Section
+          title="Spending by category"
+          description={sp?.coverage_pct_90d != null ? `trailing 90 days, ${Math.round(sp.coverage_pct_90d * 100)}% of household spending categorized` : "trailing 90 days"}
+        >
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {catRows.map((r) => (
+              <div key={r.key}>
+                <div className="label mb-1.5 inline-flex items-center gap-1.5">
+                  <EntityDot entityKey={r.key} /> {entity(r.key).short}
+                </div>
+                <table className="tbl">
+                  <tbody>
+                    {r.cats.slice(0, 10).map(([c, v]) => (
+                      <tr key={c}>
+                        <td className={c === "uncategorized" ? "text-muted" : ""}>{CATEGORY_LABEL[c] ?? humanize(c)}</td>
+                        <td className="num">{money(v)}</td>
+                        <td className="num text-muted">{r.total ? `${Math.round((v / r.total) * 100)}%` : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+          {uncategorized90.length ? (
+            <div className="mt-4 border-t border-hairline pt-3">
+              <div className="label mb-1.5">Uncategorized merchants, trailing 90 days</div>
+              <p className="mb-2 text-[11px] text-muted">Pick a category once and every charge from that merchant, past and future, follows it.</p>
+              <ul className="divide-y divide-hairline">
+                {uncategorized90.map((m) => (
+                  <li key={m.merchant_key} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-1.5 text-[12px]">
+                    <span className="min-w-0 flex-1">
+                      {m.display_name}
+                      <span className="ml-2 text-muted">{money(m.total)} over {plural(m.n, "charge")}</span>
+                    </span>
+                    <CategoryPicker merchantKey={m.merchant_key} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {cons.categorize?.error ? <Note tone="warn">Merchant labeling is off: {cons.categorize.error}</Note> : null}
+        </Section>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Section title="Properties" description={props ? `${plural(props.properties.length, "property", "properties")} worth ${money(props.total_value)}` : undefined}>

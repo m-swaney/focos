@@ -12,14 +12,16 @@ from . import outputs
 
 RESULT_CONTRACT = ("\n\nWhen finished, end your chat response (NOT the report file) with a fenced ```json block containing exactly: "
                    '{"summary_line": str, "report_path": str, "alerts": [{"severity": "info|warn|critical", "text": str}], '
-                   '"needs_user": [str], "decisions_logged": int, "proposals": [str], "trades_placed": [str]}. '
+                   '"needs_user": [str], "decisions_logged": int, "proposals": [str], "trades_placed": [str], '
+                   '"updates_file": str|null}. '
                    "The report file itself must contain only the markdown brief.")
 API_RESULT_CONTRACT = ("\n\nOutput format: first the complete markdown brief (H2 sections per the contract), then ONE fenced ```json "
                        "block containing exactly: "
                        '{"summary_line": str, "alerts": [{"severity": "info|warn|critical", "text": str}], "needs_user": [str], '
                        '"decisions": [{"kind": "recommendation|proposal", "text": str, "evidence": str, "review_on": "YYYY-MM-DD"}], '
                        '"proposal_specs": [{"symbol": str, "side": "buy|sell", "dollar_amount": number, "thesis": str, '
-                       '"entry_reason": str, "stop_loss": number|null, "exit_plan": str, "horizon_days": int}]}. '
+                       '"entry_reason": str, "stop_loss": number|null, "exit_plan": str, "horizon_days": int}], '
+                       '"updates": [update objects per the system prompt], "note_replies": [{"note_id": str, "reply": str}]}. '
                        "Nothing after the JSON block.")
 SNAPSHOT_SUFFIX = "\n\nReturn ONLY the JSON object. No prose, no markdown fences, no commentary before or after."
 

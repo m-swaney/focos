@@ -1,6 +1,8 @@
 """Robinhood via the Claude Code CLI acting as an MCP client (Stage A of the original design)."""
 from __future__ import annotations
 
+import re
+
 from .. import paths, settings
 from ..agent_runtime import claude_cli, settings_render
 from ..run import claude_io, tokens
@@ -8,6 +10,10 @@ from ..sandbox import brokers
 from ..sources import robinhood_snapshot as rh
 from . import write_snapshot
 from .base import SourceError
+
+AUTH_ERROR = re.compile(
+    r"unauthori[sz]ed|\b401\b|\b403\b|needs?[ -]auth|authentication (?:required|failed)|not authenticated|"
+    r"please (?:re-?)?authenticate|invalid_grant|invalid_token|token (?:has )?expired|login (?:has )?expired", re.I)
 
 
 class RobinhoodMCPSource:
@@ -23,8 +29,11 @@ class RobinhoodMCPSource:
         e = tokens.expiries()
         if not e.get("available"):
             return False, "Claude credentials not found; run `claude` once to log in"
-        if not e.get("robinhood_has_refresh") and not e.get("robinhood_access_expires"):
-            return False, "Robinhood MCP is not connected; run `claude`, then `/mcp` to authorize robinhood-trading"
+        st = tokens.robinhood_status(e)
+        if not st["present"]:
+            return False, f"Robinhood is not connected; {tokens.AUTH_FIX}"
+        if st["expired"] and not st["has_refresh"]:
+            return False, f"Robinhood login expired and cannot refresh; {tokens.AUTH_FIX}"
         return True, None
 
     def capture(self, asof: str, mode: str, run_id: str) -> dict | None:
@@ -42,11 +51,23 @@ class RobinhoodMCPSource:
                                        budget_usd=float((agent.get("budget_usd") or {}).get("snapshot") or 3.0),
                                        mcp_config=files["mcp"])
         log = paths.LOGS / f"{asof}-{mode}-A.json"
-        result = claude_cli.run(prompt, args, log_path=log, cwd=paths.HOME, claude=agent.get("claude_cli") or "auto")
+        if agent.get("debug_claude"):
+            args += claude_cli.debug_args(paths.LOGS / f"{asof}-{mode}-A.debug.log")
+        before = tokens.robinhood_status()
+        try:
+            result = claude_cli.run(prompt, args, log_path=log, cwd=paths.HOME, claude=agent.get("claude_cli") or "auto")
+        except RuntimeError as e:  # no result object at all; the message carries the stderr tail
+            self.last_meta = {"is_error": True, "token_before": before, "token_after": tokens.robinhood_status()}
+            raise SourceError(_auth_message(str(e)) or str(e)[:500]) from e
         meta = claude_io.summarize(result)
+        after = tokens.robinhood_status()
+        meta.update({"token_before": before, "token_after": after,
+                     "token_refreshed": bool(after.get("expires_at") and after.get("expires_at") != before.get("expires_at"))})
         self.last_meta = meta
         if meta["is_error"]:
-            raise SourceError(str(result.get("result") or result.get("error") or meta.get("subtype") or "claude error")[:500])
+            text = str(result.get("result") or result.get("error") or meta.get("subtype") or "claude error")
+            evidence = "\n".join(str(x) for x in (text, result.get("_stderr_tail"), result.get("api_error_status")) if x)
+            raise SourceError(_auth_message(evidence) or text[:500])
         payload = claude_io.extract_json(result.get("result") or "")
         normalize_snapshot(payload)
         errors = rh.validate(payload)
@@ -57,6 +78,13 @@ class RobinhoodMCPSource:
         snap["source"] = self.name
         write_snapshot(snap)
         return snap
+
+
+def _auth_message(evidence: str) -> str | None:
+    """A clear, actionable error when the CLI output looks like an MCP auth failure; None otherwise."""
+    if AUTH_ERROR.search(evidence or ""):
+        return f"Robinhood login expired or refresh failed; {tokens.AUTH_FIX} (detail: {evidence.strip()[:200]})"
+    return None
 
 
 CRYPTO_CODE_ALIASES = ("code", "asset", "symbol", "currency", "ticker")

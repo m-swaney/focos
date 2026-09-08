@@ -89,13 +89,50 @@ def test_api_writer_end_to_end(initialized_home: Path):
     assert "Actions for Ann" in system
 
 
+def test_api_writer_applies_updates_and_replies(initialized_home: Path):
+    from focos import inbox
+
+    _prep(initialized_home)
+    (initialized_home / "config" / "goals.yml").write_text(yaml.safe_dump({"version": 2, "goals": [
+        {"id": "roof", "kind": "purchase", "name": "New roof", "target_amount": 12000}]}))
+    (initialized_home / "config" / "profile.yml").write_text(yaml.safe_dump({"version": 2, "owner": {"name": "Ann"},
+                                                                             "tax_agenda": ["Fix payroll over-withholding"]}))
+    settings.reset()
+    fact = inbox.add("The roof is done and paid for.", about={"type": "goal", "id": "roof"})
+    question = inbox.add("Is my emergency fund big enough?", about={"type": "question"})
+    reply = BRIEF.split("```json")[0] + "## What I updated\n- roof: done\n\n```json\n" + json.dumps({
+        "summary_line": "Roof done", "alerts": [], "needs_user": ["Your emergency fund covers 1.5 of 3 months."],
+        "updates": [{"target": "goal", "id": "roof", "set": {"status": "done"}, "reason": "owner note", "source_note_id": fact["id"]},
+                    {"target": "tax_agenda", "id": "fix_payroll_over_withholding", "set": {"status": "done"}, "reason": "note"},
+                    {"target": "spending", "set": {"monthly_core_expenses": 9999}, "reason": "guess"}],
+        "note_replies": [{"note_id": question["id"], "reply": "Not yet; 1.5 of 3 months."}]}) + "\n```"
+    fake = FakeProvider([reply])
+    out = APIBriefWriter(provider=fake).write("daily", "2026-03-02", "daily-2026-03-02-1")
+    assert out.ok, out.error
+    # the model saw the inbox section with both notes
+    user_msg = fake.calls[0][1][0].content
+    assert "### inbox" in user_msg and fact["id"] in user_msg and "tax_agenda_open" in user_msg
+    goals = yaml.safe_load((initialized_home / "config" / "goals.yml").read_text())["goals"]
+    assert goals[0]["status"] == "done" and str(goals[0]["completed_on"]) == "2026-03-02"
+    ta = yaml.safe_load((initialized_home / "config" / "profile.yml").read_text())["tax_agenda"]
+    assert ta[0]["status"] == "done"
+    assert inbox.get(fact["id"])["status"] == "applied" and inbox.get(question["id"])["status"] == "answered"
+    br = settings.read_json(paths.LATEST / "brief_result.json")
+    assert br["updates_applied"] == 2 and "updates" not in br and "note_replies" not in br
+    assert any(n.startswith("Could not apply: spending") for n in br["needs_user"])
+    changes = [json.loads(l) for l in (paths.CHANGES).read_text().splitlines()]
+    assert [c["ok"] for c in changes] == [True, True, False] and all(c["actor"] == "model" for c in changes)
+    inbox_json = settings.read_json(paths.LATEST / "inbox.json")
+    assert inbox_json["run_id"] == "daily-2026-03-02-1" and len(inbox_json["notes"]) == 2
+
+
 def test_api_writer_recovers_missing_json(initialized_home: Path):
     _prep(initialized_home)
     md_only = BRIEF.split("```json")[0]
     fake = FakeProvider([md_only, 'here you go\n```json\n{"summary_line": "ok", "alerts": [], "needs_user": []}\n```'])
     out = APIBriefWriter(provider=fake).write("daily", "2026-03-01", "t")
     assert out.ok, out.error
-    assert len(fake.calls) == 2 and out.cost_usd == 0.04
+    assert len(fake.calls) == 2 and "cost_usd" not in out.meta
 
 
 def test_api_writer_reports_provider_error(initialized_home: Path):

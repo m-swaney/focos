@@ -28,11 +28,14 @@ ai:
 agent:                           # only used when ai.mode is agent
   claude_cli: auto
   sandbox_enabled: false
+  model_keepalive: haiku         # tiny daily call that keeps the Robinhood login fresh; also labels merchants when no API key
+  debug_claude: false            # true = also write claude --debug-file traces for Stage A/C runs (state/logs)
 
 schedule:                        # local time in household.timezone (profile.yml)
   daily:   { days: weekdays, time: "16:35" }
   weekly:  { day: sun, time: "18:00" }
   monthly: { day: 1, time: "19:00" }
+  keepalive: { enabled: true, time: "09:00" }   # every day, only when holdings.source is robinhood_mcp
 
 git:
   commit_each_run: true          # commit state/ and reports/ in this folder after every run

@@ -4,11 +4,13 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { NetWorthChart } from "@/components/charts/NetWorthChart";
 import type { AreaPoint, ChartSeries } from "@/components/charts/StackedAreaChart";
+import { NoteBox } from "@/components/inbox/NoteBox";
 import { ApproveButton } from "@/components/SandboxControls";
 import { Card, CardLink, Chip, Empty, EntityDot, Meter, PageHeader, Severity, Symbol } from "@/components/ui";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { ShowMore } from "@/components/ui/ShowMore";
 import { briefSectionMatching, briefText } from "@/lib/data/briefs";
+import { ACTOR_LABEL, describeChange, pendingNotes, recentChanges, unaddressedNotes } from "@/lib/data/changes";
 import { alerts, briefResult, catalysts, consolidated, diff, entitiesData, plan, portfolio, sandbox } from "@/lib/data/latest";
 import { series } from "@/lib/data/series";
 import { health } from "@/lib/data/status";
@@ -107,7 +109,18 @@ export default function Today() {
       action: <ApproveButton refId={p.ref_id} approved={!!p.approved} />,
     });
   }
-  for (const q of br?.needs_user ?? []) items.push({ sev: "question", text: clean(q), source: "brief", href: br ? `/briefs/${br.mode ?? "daily"}/${br.date}` : undefined });
+  for (const q of br?.needs_user ?? [])
+    items.push({
+      sev: "question",
+      text: clean(q),
+      source: "brief",
+      href: br ? `/briefs/${br.mode ?? "daily"}/${br.date}` : undefined,
+      action: <NoteBox compact about={{ type: "question", id: q.slice(0, 120) }} placeholder="Your answer" />,
+    });
+  for (const n of unaddressedNotes())
+    items.push({ sev: "warn", text: <>Your note from {dateShort(n.ts)} was not addressed: {clean(n.text)}</>, source: "note" });
+  const waiting = pendingNotes();
+  const updates = recentChanges(8);
   const seen = new Set<string>();
   const key = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, "").slice(0, 48);
   for (const a of al?.alerts ?? []) {
@@ -195,6 +208,14 @@ export default function Today() {
               <Icon name="check" size={14} className="text-gain" /> Nothing needs you today.
             </p>
           )}
+          <div className="border-t border-hairline px-4 py-3">
+            <div className="label mb-1">Tell your chief of staff</div>
+            <p className="mb-2 text-[11px] text-muted">
+              Anything that changed, a correction, or a question. It is read on the next run and shows up under &ldquo;What I updated&rdquo;.
+              {waiting.length ? ` ${plural(waiting.length, "note")} waiting for the next run.` : ""}
+            </p>
+            <NoteBox />
+          </div>
           {actionsMeaningful ? (
             <div className="border-t border-hairline px-4 py-3">
               <div className="label mb-1">Actions from the brief</div>
@@ -219,7 +240,7 @@ export default function Today() {
             </Empty>
           )}
           {br ? (
-            <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-hairline pt-3">
+            <dl className="mt-4 grid grid-cols-4 gap-2 border-t border-hairline pt-3">
               <div>
                 <dt className="label">Alerts</dt>
                 <dd className="mt-0.5 text-[13px]">{(al?.alerts.length ?? 0) + (br.alerts?.length ?? 0)}</dd>
@@ -232,8 +253,30 @@ export default function Today() {
                 <dt className="label">Proposals</dt>
                 <dd className="mt-0.5 text-[13px]">{br.proposals?.length ?? 0}</dd>
               </div>
+              <div>
+                <dt className="label">Updates</dt>
+                <dd className="mt-0.5 text-[13px]">{br.updates_applied ?? 0}</dd>
+              </div>
             </dl>
           ) : null}
+          <div className="mt-4 border-t border-hairline pt-3">
+            <div className="label mb-1.5">Recent updates</div>
+            {updates.length ? (
+              <ul className="space-y-1.5 text-[12px]">
+                {updates.map((c, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className={`mt-0.5 shrink-0 text-[11px] ${c.ok ? "text-secondary" : "text-critical"}`}>{ACTOR_LABEL[c.actor] ?? c.actor}</span>
+                    <span className="min-w-0 flex-1 leading-snug">
+                      {describeChange(c)}
+                      <span className="text-muted"> {dateShort(c.date)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[11px] text-muted">Nothing changed yet. Done buttons on Plan and your notes land here.</p>
+            )}
+          </div>
         </Card>
 
         {/* Row 2: net worth and accounts */}
