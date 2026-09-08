@@ -48,7 +48,7 @@ def test_seeds_then_model_then_rules(initialized_home: Path):
                          {"merchant_key": "MYSTERY VENDOR", "category": "shopping", "confidence": 0.3},
                          {"merchant_key": "NOT ASKED", "category": "travel", "confidence": 0.9}])
     out = categorize.run(store, "2026-09-05", provider=fake)
-    assert out["seeded"] == 2 and out["asked"] == 2 and out["labeled"] == 1 and out["low_confidence"] == 1 and out["provider"] == "fake"
+    assert out["seeded"] == 3 and out["asked"] == 2 and out["labeled"] == 1 and out["low_confidence"] == 1 and out["provider"] == "fake"
     assert "ROBINHOOD" not in fake.calls[0] and "LOCAL ROASTERS" in fake.calls[0] and "MYSTERY VENDOR" in fake.calls[0]
     rules = store.merchant_rules()
     assert rules["STARBUCKS"]["category"] == "dining" and rules["STARBUCKS"]["source"] == "seed"
@@ -56,7 +56,7 @@ def test_seeds_then_model_then_rules(initialized_home: Path):
     assert rules["LOCAL ROASTERS"] == {**rules["LOCAL ROASTERS"], "category": "dining", "source": "model"}
     assert rules["MYSTERY VENDOR"]["category"] == "uncategorized" and "NOT ASKED" not in rules
     cats = {r["id"]: r["category"] for r in store.conn.execute("SELECT id, category FROM transactions")}
-    assert cats == {"t1": "dining", "t2": "groceries", "t3": "dining", "t4": "uncategorized", "t5": None, "t6": None}
+    assert cats == {"t1": "dining", "t2": "groceries", "t3": "dining", "t4": "uncategorized", "t5": "transfer", "t6": None}
     assert settings.read_json(paths.LATEST / "categorize.json")["labeled"] == 1
     changes = [json.loads(l) for l in paths.CHANGES.read_text().splitlines()]
     assert changes[-1]["target"] == "merchant_rule" and changes[-1]["actor"] == "system" and changes[-1]["after"]["n"] == 1
@@ -69,10 +69,21 @@ def test_seeds_then_model_then_rules(initialized_home: Path):
     store.close()
 
 
+def test_transfer_seed_overrides_model_label(initialized_home: Path):
+    store = _store(initialized_home)
+    store.set_merchant_rule("ROBINHOOD ACH", "fees_interest", "model", 0.7)
+    store.set_merchant_rule("ALDI", "dining", "model", 0.7)  # a non-transfer model label stays
+    out = categorize.run(store, "2026-09-05", provider=FakeProvider([]))
+    rules = store.merchant_rules()
+    assert rules["ROBINHOOD ACH"]["category"] == "transfer" and rules["ROBINHOOD ACH"]["source"] == "seed" and rules["ALDI"]["category"] == "dining"
+    assert out["seeded"] == 2  # STARBUCKS + the ROBINHOOD override
+    store.close()
+
+
 def test_dry_run_writes_nothing(initialized_home: Path):
     store = _store(initialized_home)
     out = categorize.run(store, "2026-09-05", provider=FakeProvider([]), dry_run=True)
-    assert out["seeded"] == 2 and out["skipped"] == "dry run" and store.merchant_rules() == {}
+    assert out["seeded"] == 3 and out["skipped"] == "dry run" and store.merchant_rules() == {}
     assert not (paths.LATEST / "categorize.json").exists()
     store.close()
 
@@ -80,7 +91,7 @@ def test_dry_run_writes_nothing(initialized_home: Path):
 def test_model_failure_is_recorded_not_raised(initialized_home: Path):
     store = _store(initialized_home)
     out = categorize.run(store, "2026-09-05", provider=FakeProvider([], fail=True))
-    assert out["error"].startswith("model call failed") and out["seeded"] == 2
+    assert out["error"].startswith("model call failed") and out["seeded"] == 3
     assert store.get_meta(categorize.META_KEY) is None  # will try again next run
     store.close()
 

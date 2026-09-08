@@ -17,7 +17,9 @@ def test_taxonomy_matches_dashboard():
 
 def test_buckets_and_seeds():
     assert categories.CORE.isdisjoint(categories.DISCRETIONARY)
-    assert categories.CORE | categories.DISCRETIONARY | categories.BUSINESS | {categories.UNCATEGORIZED} == set(categories.CATEGORIES)
+    assert categories.CORE | categories.DISCRETIONARY | categories.BUSINESS | {categories.UNCATEGORIZED, categories.TRANSFER} == set(categories.CATEGORIES)
+    assert categories.bucket("transfer") == "transfer" and categories.seed_category("CHASE CREDIT CRD AUTOPAY") == "transfer"
+    assert categories.seed_category("AMERICAN EXPRESS ACH PMT") == "transfer"
     assert categories.bucket("dining") == "discretionary" and categories.bucket("groceries") == "core"
     assert categories.bucket("dining", "business") == "core" and categories.bucket(None) == "uncategorized"
     assert categories.seed_category("STARBUCKS") == "dining" and categories.seed_category("ALDI") == "groceries"

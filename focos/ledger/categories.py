@@ -9,10 +9,11 @@ from pathlib import Path
 import yaml
 
 UNCATEGORIZED = "uncategorized"
+TRANSFER = "transfer"
 CATEGORIES: tuple[str, ...] = (
     "housing", "utilities", "groceries", "dining", "transport", "health", "insurance", "shopping", "travel", "entertainment",
     "subscriptions", "kids_family", "education", "gifts_donations", "personal_care", "fees_interest", "taxes", "business_ops",
-    "professional_services", UNCATEGORIZED,
+    "professional_services", TRANSFER, UNCATEGORIZED,
 )
 DEFINITIONS: dict[str, str] = {
     "housing": "rent, mortgage escrow items, HOA dues, home repairs and maintenance, furniture",
@@ -34,6 +35,7 @@ DEFINITIONS: dict[str, str] = {
     "taxes": "federal, state, and property tax payments; tax software",
     "business_ops": "software, hosting, supplies, advertising, and other operating costs of a business entity",
     "professional_services": "accountants, lawyers, consultants, payroll services, registered agents",
+    TRANSFER: "credit card payments, loan payments, brokerage deposits, and moves between the household's own accounts; not spending",
     UNCATEGORIZED: "unknown; use only when nothing else fits",
 }
 CORE = frozenset({"housing", "utilities", "groceries", "transport", "health", "insurance", "kids_family", "education",
@@ -48,10 +50,12 @@ def is_category(name: str | None) -> bool:
 
 
 def bucket(category: str | None, entity_kind: str | None = None) -> str:
-    """core | discretionary | uncategorized for one expense. A business entity's spending is all operating cost."""
+    """core | discretionary | uncategorized | transfer for one expense. A business entity's spending is all operating cost."""
     cat = category or UNCATEGORIZED
     if cat == UNCATEGORIZED:
         return "uncategorized"
+    if cat == TRANSFER:
+        return "transfer"
     if entity_kind and entity_kind != "household":
         return "core"
     if cat in DISCRETIONARY:

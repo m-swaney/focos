@@ -68,6 +68,9 @@ def test_expense_by_category_and_buckets():
     assert p["expense_by_category"] == {"groceries": 120, "dining": 40, "uncategorized": 35}
     assert p["core_expense"] == 120 and p["discretionary_expense"] == 40 and p["uncategorized_expense"] == 35
     assert abs(sum(p["expense_by_category"].values()) - p["expense"]) < 1e-9
+    r2 = netting.net(txs + [dict(tx(6, "p-chk", -900, "CHASE CREDIT CRD AUTOPAY"), category="transfer")], ENTITY_OF, RULES, CORRIDORS)
+    p2 = r2["per_entity"]["personal"]
+    assert p2["expense"] == p["expense"] and p2["transfers_by_class"]["categorized_transfer"] == 900 and p2["one_legged_out"] == 900
     shop = r["per_entity"]["shop"]
     assert shop["core_expense"] == 99 and shop["discretionary_expense"] == 0  # a business spends on operations
     c = r["consolidated"]

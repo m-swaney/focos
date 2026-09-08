@@ -70,6 +70,20 @@ def test_goal_done_preserves_comments_and_other_goals(initialized_home: Path):
     assert roof["status"] == "active" and roof["completed_on"] is None
 
 
+def test_plan_json_follows_edits(initialized_home: Path):
+    _seed(initialized_home)
+    settings.write_json(paths.LATEST / "plan.json", {"available": True, "tax_agenda": ["Fix payroll over-withholding and size the refund"],
+                                                    "goals": [{"id": "roof", "name": "New roof", "status": "active"}, {"id": "someday", "name": "Someday"}],
+                                                    "goals_summary": {"active": 2, "done": 0, "paused": 0}})
+    apply_mod.apply([{"target": "goal", "id": "roof", "set": {"status": "done"}},
+                     {"target": "tax_agenda", "id": "fix_payroll_over_withholding_and_size_the_refund", "set": {"status": "done"}}],
+                    actor="user", run="cli", date="2026-09-08")
+    plan = settings.read_json(paths.LATEST / "plan.json")
+    assert plan["goals"][0]["status"] == "done" and plan["goals"][0]["completed_on"] == "2026-09-08" and plan["goals"][1]["status"] == "active"
+    assert plan["goals_summary"] == {"active": 1, "done": 1, "paused": 0}
+    assert plan["tax_agenda"][0]["status"] == "done" and plan["tax_agenda"][1]["status"] == "open" and plan["tax_agenda"][1]["id"]
+
+
 def test_goal_fields_and_unknown_id(initialized_home: Path):
     _seed(initialized_home)
     recs = apply_mod.apply([{"target": "goal", "id": "someday", "set": {"target_amount": 5000, "deadline": "2027-01-01", "funded_amount": 100}},

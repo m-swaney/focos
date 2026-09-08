@@ -19,6 +19,7 @@ export const CATEGORIES = [
   "taxes",
   "business_ops",
   "professional_services",
+  "transfer",
   "uncategorized",
 ] as const;
 
@@ -44,5 +45,6 @@ export const CATEGORY_LABEL: Record<string, string> = {
   taxes: "Taxes",
   business_ops: "Business operations",
   professional_services: "Professional services",
+  transfer: "Transfer (not spending)",
   uncategorized: "Uncategorized",
 };

@@ -65,7 +65,9 @@ export default function PlanPage() {
   const allGoals = [...(p.goals ?? [])].sort((a, b) => (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999"));
   const goals = allGoals.filter((g) => (g.status ?? "active") === "active");
   const settled = allGoals.filter((g) => (g.status ?? "active") !== "active");
-  const agenda: TaxAgendaItem[] = (p.tax_agenda ?? []).map((t, i) => (typeof t === "string" ? { id: `item_${i}`, text: t, status: "open" } : t));
+  // pre-v3 plan.json carries plain strings; derive the same id focos.config.models.slug would give
+  const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) || "goal";
+  const agenda: TaxAgendaItem[] = (p.tax_agenda ?? []).map((t) => (typeof t === "string" ? { id: slug(t), text: t, status: "open" } : t));
   const openAgenda = agenda.filter((t) => (t.status ?? "open") === "open");
   const settledAgenda = agenda.filter((t) => (t.status ?? "open") !== "open");
   const gaps = p.protection?.gaps ?? [];

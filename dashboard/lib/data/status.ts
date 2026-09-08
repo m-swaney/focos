@@ -30,12 +30,12 @@ export interface Health {
 
 const STALE_HOURS = 30;
 
-function tokenHealth(label: string, iso: string | null | undefined, now: number): TokenHealth {
+function tokenHealth(label: string, iso: string | null | undefined, now: number, warnHours = 48): TokenHealth {
   if (!iso) return { label, expires: null, hoursLeft: null, tone: "none" };
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return { label, expires: null, hoursLeft: null, tone: "none" };
   const hoursLeft = (t - now) / 36e5;
-  return { label, expires: iso, hoursLeft, tone: hoursLeft <= 0 ? "bad" : hoursLeft < 48 ? "warn" : "ok" };
+  return { label, expires: iso, hoursLeft, tone: hoursLeft <= 0 ? "bad" : hoursLeft < warnHours ? "warn" : "ok" };
 }
 
 /** What the header pill and the failure banner need, computed once per request. */
@@ -49,7 +49,7 @@ export function health(): Health {
   const tk = alerts()?.tokens;
   const tokens: TokenHealth[] = tk
     ? [
-        tokenHealth("Robinhood access", tk.robinhood_access_expires, now),
+        tokenHealth("Robinhood access", tk.robinhood_access_expires, now, 12), // the token lives ~48h; the keep-alive renews it daily
         tokenHealth("Claude login", tk.claude_refresh_expires, now),
       ]
     : [];

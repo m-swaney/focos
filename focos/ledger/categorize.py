@@ -14,7 +14,7 @@ from datetime import timedelta
 
 from .. import paths, settings
 from ..llm import LLMError, Message, key_status, provider_for
-from . import categories, merchants, netting
+from . import categories, merchants
 
 WINDOW_DAYS = 95
 MAX_MERCHANTS = 60
@@ -32,7 +32,8 @@ SCHEMA = {"type": "object", "required": ["labels"],
 
 
 def _transfer_patterns() -> list[re.Pattern]:
-    pats = [netting.TRANSFERISH]
+    """Merchants config/transfer_rules.yml already classifies; asking about them would be wasted."""
+    pats: list[re.Pattern] = []
     for r in (settings.transfer_rules() or {}).get("rules") or []:
         try:
             pats.append(re.compile(r["match"], re.I))
@@ -52,7 +53,9 @@ def _prompt(rows: list[dict], entity_kinds: dict[str, str]) -> str:
              for m in rows]
     return ("Categories (use exactly these names):\n" + categories.taxonomy_text() +
             "\n\nExamples: STARBUCKS -> dining 0.95; FPL -> utilities 0.9; SUREPAYROLL -> professional_services 0.8; "
-            "an unfamiliar name with no clue -> uncategorized 0.2.\n"
+            "CHASE CREDIT CRD AUTOPAY -> transfer 0.95; an unfamiliar name with no clue -> uncategorized 0.2.\n"
+            "Credit card payments, loan payments, brokerage deposits, and moves between the household's own accounts are "
+            "`transfer`, never spending.\n"
             "Business entities (kind business) spend on operations; label their software, hosting, and services as business_ops or "
             "professional_services.\n\nMerchants (one per line: key | sample | count | typical amount | account type | entity):\n"
             + "\n".join(lines) +
@@ -117,6 +120,12 @@ def run(store, asof: str, *, force: bool = False, provider=None, dry_run: bool =
         if cat:
             if not dry_run:
                 store.set_merchant_rule(m["merchant_key"], cat, "seed", 0.9, merchants.display_name(m["merchant_key"]))
+            out["seeded"] += 1
+    # a transfer seed beats an earlier model label: card payments the model once called "fees" become transfers
+    for key, rule in store.merchant_rules().items():
+        if rule.get("source") == "model" and rule.get("category") != categories.TRANSFER and categories.seed_category(key) == categories.TRANSFER:
+            if not dry_run:
+                store.set_merchant_rule(key, categories.TRANSFER, "seed", 0.9, rule.get("display_name"))
             out["seeded"] += 1
     if out["seeded"] and not dry_run:
         out["rules_applied"] += store.apply_category_rules(start)

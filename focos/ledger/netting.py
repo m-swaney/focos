@@ -101,6 +101,13 @@ def net(transactions: list[dict], entity_of: dict[str, str], rules: list[dict] |
                     t["transfer_class"] = r.get("classify_as", "one_legged")
                 break
 
+    # 2b. Rows the categorizer or the owner labeled `transfer` (card payments, moves between own accounts)
+    for t in txs:
+        if t["kind"] == "normal" and t.get("category") == categories.TRANSFER:
+            t["kind"] = "transfer"
+            t["pair_id"] = f"cat:{t['id']}"
+            t["transfer_class"] = "categorized_transfer"
+
     # 3. Heuristic pairing
     normal = [t for t in txs if t["kind"] == "normal"]
     normal.sort(key=lambda t: (_d(t["date"]), t["id"]))

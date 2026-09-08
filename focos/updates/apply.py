@@ -12,7 +12,7 @@ from datetime import date as _date
 from datetime import datetime, timedelta
 from typing import Any
 
-from .. import inbox, paths
+from .. import inbox, paths, settings
 from ..config import writer
 from ..config.models import slug, tax_agenda_items
 from ..config.validate import validate_data
@@ -248,10 +248,39 @@ def apply(updates: list[dict] | None, *, actor: str, run: str, date: str | None 
         except Exception as e:  # noqa: BLE001  (a bug must not take the brief down)
             rec["error"] = f"{type(e).__name__}: {str(e)[:200]}"
         _log(rec)
+        if rec["ok"] and upd.target in ("goal", "tax_agenda"):
+            refresh_plan()
         if rec["ok"] and upd.source_note_id:
             inbox.resolve(upd.source_note_id, "applied", describe(rec))
         out.append(rec)
     return out
+
+
+def refresh_plan() -> bool:
+    """Mirror goal status and tax-agenda items into state/derived/latest/plan.json so the dashboard shows an edit at
+    once instead of after the next run (the pipeline rebuilds the whole file anyway)."""
+    p = paths.LATEST / "plan.json"
+    plan = settings.read_json(p, None)
+    if not isinstance(plan, dict) or not plan.get("available"):
+        return False
+    try:
+        settings.reset()
+        prof = settings.profile_v2()
+        goals = {g.get("id"): g for g in (settings.goals_v2() or {}).get("goals") or []}
+        plan["tax_agenda"] = prof.get("tax_agenda") or []
+        for row in plan.get("goals") or []:
+            g = goals.get(row.get("id"))
+            if g:
+                row["status"] = g.get("status") or "active"
+                row["completed_on"] = _iso(g.get("completed_on"))
+                row["name"] = g.get("name") or row.get("name")
+                row["deadline"] = _iso(g.get("deadline"))
+        rows = plan.get("goals") or []
+        plan["goals_summary"] = {s: sum(1 for r in rows if (r.get("status") or "active") == s) for s in ("active", "done", "paused")}
+        settings.write_json(p, plan)
+        return True
+    except Exception:  # noqa: BLE001  (a stale plan.json is not worth failing an update over)
+        return False
 
 
 def apply_replies(replies: list[dict] | None, run: str) -> int:
