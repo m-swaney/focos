@@ -147,6 +147,27 @@ class GitSettings(_Lenient):
     commit_paths: list[str] = ["state", "reports", "config"]
 
 
+class IntradaySettings(_Lenient):
+    """Keeps an open dashboard moving between daily runs: delayed quotes every few minutes during market hours,
+    and one bank pull at midday. No AI call and no broker call, so this costs nothing to leave on."""
+    enabled: bool = True
+    every_minutes: int = Field(default=15, ge=1, le=240)
+    market_open: str = "09:30"
+    market_close: str = "16:00"
+    weekdays_only: bool = True
+    midday_ledger: str | None = "12:00"      # null to skip the midday bank pull
+    _o = field_validator("market_open", "market_close", mode="before")(_coerce_time)
+
+    @model_validator(mode="after")
+    def _window(self):
+        for name in ("market_open", "market_close"):
+            if not _TIME.match(str(getattr(self, name))):
+                raise ValueError(f"intraday.{name} must be HH:MM (24h), got {getattr(self, name)!r}")
+        if self.midday_ledger and not _TIME.match(str(self.midday_ledger)):
+            raise ValueError(f"intraday.midday_ledger must be HH:MM (24h) or null, got {self.midday_ledger!r}")
+        return self
+
+
 class DashboardSettings(_Lenient):
     port: int = 3100
     api_port: int = 3101
@@ -163,6 +184,7 @@ class FocosSettings(_Lenient):
     schedule: ScheduleSettings = ScheduleSettings()
     git: GitSettings = GitSettings()
     dashboard: DashboardSettings = DashboardSettings()
+    intraday: IntradaySettings = IntradaySettings()
     setup_completed_at: str | None = None
 
 

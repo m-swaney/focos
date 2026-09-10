@@ -162,6 +162,23 @@ def run_cycle(mode: str = typer.Option("daily", help="daily | weekly | monthly")
         raise typer.Exit(1)
 
 
+@app.command()
+def intraday(midday: bool = typer.Option(False, "--midday", help="also do the once-a-day bank pull and rebuild")) -> None:
+    """Re-price the latest holdings snapshot from delayed quotes so an open dashboard shows current numbers.
+
+    The dashboard service does this on a timer; this runs it once by hand. It never rewrites the snapshot or the
+    dated history, and never bumps the sandbox warmup."""
+    from . import intraday as intraday_mod
+
+    if midday:
+        _echo(intraday_mod.run_midday())
+    out = intraday_mod.refresh()
+    _echo({k: out.get(k) for k in ("available", "reason", "asof", "stale", "total_value", "change_since_snapshot",
+                                   "day_change", "priced", "skipped")})
+    if not out.get("available"):
+        raise typer.Exit(1)
+
+
 ai_app = typer.Typer(no_args_is_help=True, help="AI provider (api mode): test the key, list defaults, estimate context size.")
 app.add_typer(ai_app, name="ai")
 

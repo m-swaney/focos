@@ -41,6 +41,14 @@ git:
   commit_each_run: true          # commit state/ and reports/ in this folder after every run
   push: false                    # only if you add a private remote yourself
 
+intraday:                        # keeps an open dashboard moving between daily runs; costs nothing to leave on
+  enabled: true
+  every_minutes: 15              # re-price holdings from free delayed quotes this often
+  market_open: "09:30"           # local time in household.timezone (profile.yml)
+  market_close: "16:00"
+  weekdays_only: true
+  midday_ledger: "12:00"         # one bank pull a day at this time; null to skip it
+
 dashboard:
   port: 3100
   api_port: 3101

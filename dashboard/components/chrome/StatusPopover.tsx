@@ -1,5 +1,6 @@
 import { Icon } from "@/components/ui/Icon";
 import { StatusMark } from "@/components/ui";
+import { intraday } from "@/lib/data/intraday";
 import { health } from "@/lib/data/status";
 import { ago, dateTime, relTime } from "@/lib/format";
 
@@ -17,6 +18,7 @@ const DOT: Record<string, string> = {
  */
 export function StatusPopover({ id, compact = false }: { id: string; compact?: boolean }) {
   const h = health();
+  const intra = intraday();
   const line1 = h.daily ? (h.tone === "bad" ? h.label : "Daily run ok") : "No runs yet";
   const line2 = h.daily ? ago(h.hoursSinceDaily) : "run focos run --mode daily";
 
@@ -132,6 +134,16 @@ export function StatusPopover({ id, compact = false }: { id: string; compact?: b
           ) : null}
 
           <div className="mt-4 border-t border-hairline pt-3 text-[11px] text-secondary">
+            {intra ? (
+              <div className="mb-1.5 flex justify-between">
+                <span>Intraday prices</span>
+                <span className={intra.stale ? "text-warn" : "text-secondary"}>
+                  {intra.available && intra.asof
+                    ? `${relTime(intra.asof)}${intra.stale ? ", last good quotes" : ""}`
+                    : intra.reason ?? "not available"}
+                </span>
+              </div>
+            ) : null}
             <div className="mb-1.5">
               Manual run <code className="rounded-[3px] bg-panel-2 px-1.5 py-0.5 text-ink">focos run --mode daily</code>
             </div>

@@ -150,6 +150,14 @@ def run_all() -> list[Check]:
     out.append(Check(id="service", ok=bool(svc and svc.installed), severity="info", title="Dashboard service at login",
                      detail="installed" if svc and svc.installed else "not installed", fix="Run `focos service install`."))
     # node / dashboard build
+    from .. import intraday as intraday_mod
+    if intraday_mod.enabled():
+        got = intraday_mod.read() or {}
+        age = _age_hours(got.get("asof"))
+        fresh = age is not None and age < 2
+        out.append(Check(id="intraday", ok=(True if fresh else None), severity="info", title="Intraday prices",
+                         detail=(f"updated {age:.1f}h ago" if age is not None else "never run") + (", stale quotes" if got.get("stale") else ""),
+                         fix="Start the dashboard service (`focos service start`), or run `focos intraday` once."))
     from ..service.supervisor import dashboard_command, node_exe
     out.append(Check(id="node", ok=bool(node_exe()), severity="warn", title="Node runtime", detail=node_exe() or "not found",
                      fix="Re-run the installer (it downloads a private Node runtime)."))

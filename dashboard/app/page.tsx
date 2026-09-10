@@ -11,6 +11,7 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { ShowMore } from "@/components/ui/ShowMore";
 import { briefSectionMatching, briefText } from "@/lib/data/briefs";
 import { ACTOR_LABEL, describeChange, pendingNotes, recentChanges, unaddressedNotes } from "@/lib/data/changes";
+import { intradayView } from "@/lib/data/intraday";
 import { alerts, briefResult, catalysts, consolidated, diff, entitiesData, plan, portfolio, sandbox } from "@/lib/data/latest";
 import { series } from "@/lib/data/series";
 import { health } from "@/lib/data/status";
@@ -133,11 +134,20 @@ export default function Today() {
   }
   items.sort((a, b) => ORDER[a.sev] - ORDER[b.sev]);
 
-  // Net worth.
-  const netWorth = cons?.available ? cons.net_worth : null;
-  const investments = pf?.meta.broker_total_value ?? pf?.meta.total_value ?? null;
-  const change = df?.total_change ?? null;
-  const changePct = change != null && investments ? change / (investments - change) : null;
+  // Net worth. Between daily runs the service re-prices the same holdings from delayed quotes, so prefer those
+  // marks when they are fresh and say so; the broker's own totals are the headline right after a run.
+  const iv = intradayView();
+  const live = iv?.usable ? iv.data : null;
+  const snapshotInvestments = pf?.meta.broker_total_value ?? pf?.meta.total_value ?? null;
+  const investments = live?.total_value ?? snapshotInvestments;
+  const netWorth = cons?.available ? (cons.net_worth ?? 0) + (live?.change_since_snapshot ?? 0) : null;
+  const change = live ? live.day_change ?? null : df?.total_change ?? null;
+  const changePct = live
+    ? live.day_change_pct ?? null
+    : change != null && investments
+      ? change / (investments - change)
+      : null;
+  const priceNote = live ? `prices ${timeShort(live.asof)}${live.stale ? ", last good quotes" : ""}` : null;
   const hasLedger = points.some((p) => p.netWorth != null);
   const chartSeries: ChartSeries[] = hasLedger
     ? entityKeys.map((k) => ({ key: k, label: entity(k).short, color: seriesVar(entity(k).slot) }))
@@ -167,6 +177,7 @@ export default function Today() {
   const changed = (df?.movers.length ?? 0) + (df?.new_positions.length ?? 0) + (df?.closed_positions.length ?? 0) + (df?.quantity_changes.length ?? 0) + todaysOrders.length > 0;
 
   // News.
+  const liveMovers = (live?.movers ?? []).filter((m) => m.day_change_pct != null).slice(0, 5);
   const news = [...(cat?.news ?? [])].sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""));
   const earnings = cat?.earnings ?? [];
 
@@ -297,8 +308,17 @@ export default function Today() {
                     {changePct != null ? ` (${signed(changePct, (x) => pct(x, 2))})` : ""}
                   </span>
                 ) : null}
-                {df?.previous_date ? <span className="text-muted"> since {dateShort(df.previous_date)}</span> : null}
+                {live ? (
+                  <span className="text-muted"> today</span>
+                ) : df?.previous_date ? (
+                  <span className="text-muted"> since {dateShort(df.previous_date)}</span>
+                ) : null}
               </div>
+              {priceNote ? (
+                <div className="mt-1 text-[11px] text-muted">
+                  {priceNote}, {live?.delayed_minutes ?? 15}-min delayed
+                </div>
+              ) : null}
             </div>
             {hasLedger && cons?.by_entity ? (
               <ul className="flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
@@ -405,10 +425,31 @@ export default function Today() {
           )}
         </Card>
 
-        <Card title="What changed" meta={df?.previous_date ? `since ${dateShort(df.previous_date)}` : undefined} className="col-span-12 md:col-span-6 xl:col-span-4 3xl:col-span-3">
+        <Card
+          title="What changed"
+          meta={priceNote ?? (df?.previous_date ? `since ${dateShort(df.previous_date)}` : undefined)}
+          className="col-span-12 md:col-span-6 xl:col-span-4 3xl:col-span-3"
+        >
+          {liveMovers.length ? (
+            <div className="mb-3 space-y-3 text-[12px]">
+              <ChangeGroup title="Movers today" icon="bolt">
+                {liveMovers.map((m) => (
+                  <li key={`${m.account}-${m.symbol}`} className="flex items-baseline justify-between gap-3">
+                    <span>
+                      <Symbol>{m.symbol}</Symbol> <span className="text-muted">{accountLabel(m.account)}</span>
+                    </span>
+                    <span>
+                      <span className={tone(m.day_change_pct)}>{signed(m.day_change_pct, (x) => pct(x, 1))}</span>
+                      <span className="ml-2 text-secondary">{money(m.value)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ChangeGroup>
+            </div>
+          ) : null}
           {df && changed ? (
             <div className="space-y-3 text-[12px]">
-              {df.movers.length ? (
+              {!liveMovers.length && df.movers.length ? (
                 <ChangeGroup title="Movers" icon="bolt">
                   {[...df.movers]
                     .sort((a, b) => Math.abs(b.day_change_pct) - Math.abs(a.day_change_pct))
@@ -476,7 +517,7 @@ export default function Today() {
                 </ChangeGroup>
               ) : null}
             </div>
-          ) : (
+          ) : liveMovers.length ? null : (
             <Empty>{df ? "No changes since yesterday." : "Changes appear after the second daily run."}</Empty>
           )}
         </Card>

@@ -174,6 +174,17 @@ def serve(with_dashboard: bool = True, with_api: bool = True, once: bool = False
             signal.signal(s, _sig)
         except (ValueError, OSError):
             pass
+    ticker = None
+    try:
+        from ..intraday import Ticker
+
+        t = Ticker()
+        if t.enabled():
+            ticker = t
+            log.info("intraday: re-pricing every %s min between %s and %s (%s)", t.cfg.get("every_minutes"),
+                     t.cfg.get("market_open"), t.cfg.get("market_close"), settings.timezone_name())
+    except Exception as e:  # noqa: BLE001  (never let this stop the dashboard from starting)
+        log.info("intraday: off (%s)", e)
     reap_orphans()  # a previous supervisor may have been killed without releasing the dashboard's port
     for c in children:
         c.start()
@@ -195,6 +206,8 @@ def serve(with_dashboard: bool = True, with_api: bool = True, once: bool = False
                     if not stop.is_set():
                         c.start()
                         _record(children)
+            if ticker is not None:
+                ticker.tick()
             stop.wait(2)
     finally:
         for c in children:

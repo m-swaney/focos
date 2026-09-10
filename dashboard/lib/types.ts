@@ -482,6 +482,42 @@ export interface RunStatus {
 
 export type Status = Partial<Record<Mode, RunStatus>>;
 
+export interface IntradayMover {
+  symbol: string;
+  account: string;
+  quantity: number;
+  price: number;
+  value: number;
+  day_change_pct: number | null;
+  value_change: number;
+  big?: boolean;
+}
+
+/** state/cache/intraday.json: the daily snapshot re-priced from delayed quotes between runs. */
+export interface Intraday {
+  available: boolean;
+  reason?: string;
+  asof?: string;
+  source?: string;
+  stale?: boolean;
+  delayed_minutes?: number;
+  snapshot_date?: string;
+  snapshot_captured_at?: string;
+  snapshot_total_value?: number;
+  total_value?: number;
+  change_since_snapshot?: number;
+  day_change?: number;
+  day_change_pct?: number | null;
+  big_move_pct?: number;
+  accounts?: { key: string; equity_value: number; total_value: number; change_since_snapshot: number }[];
+  movers?: IntradayMover[];
+  positions?: IntradayMover[];
+  symbols?: number;
+  priced?: number;
+  skipped?: string[];
+  midday?: { date?: string; ok?: boolean; error?: string | null; ts?: string; pull?: Record<string, unknown> | null } | null;
+}
+
 export interface Decision {
   id?: string;
   date: string;

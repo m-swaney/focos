@@ -69,6 +69,7 @@ focos done goal <id>            # mark a goal done (also: done tax <id>, done de
 focos changes                   # what changed in goals, agenda, spending, decisions, and who changed it
 focos ledger refresh            # pull the bank feed
 focos ledger categorize         # apply merchant rules and label new merchants
+focos intraday                  # re-price holdings now from delayed quotes (the service does this on a timer)
 focos holdings capture          # refresh holdings
 focos auth robinhood            # connect (or reconnect) Robinhood in agent mode
 focos ai test                   # check the AI key
@@ -91,6 +92,10 @@ is logged to `state/changes.jsonl`, shown under "Recent updates", and reported b
   trading sandbox (`config/sandbox_rules.yml`, off by default). See `agent/prompts/`. Connect Robinhood with
   `focos auth robinhood`; a small daily keep-alive job (`schedule.keepalive`) refreshes the login so it does not
   lapse over weekends, and `focos doctor` says when you need to sign in again.
+- **Between runs**: the dashboard service re-prices your holdings from free delayed quotes every 15 minutes
+  during market hours and pulls the bank feed once at midday, so a page left open keeps moving instead of
+  waiting for the evening run. It never calls the AI or the broker, never rewrites the day's snapshot, and
+  writes only to `state/cache/`. Turn it off or retime it under `intraday` in `config/focos.yml`.
 - **Learning over time**: expenses get a category from merchant rules (seeded for national chains, learned from
   one small model call per run for new merchants, corrected by you on the Wealth page). Once most spending is
   categorized, focos fills in or refines the profile's monthly core spending from the observed figures, slowly

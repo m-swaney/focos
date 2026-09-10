@@ -2,8 +2,9 @@ import { HBars, type HBarRow } from "@/components/charts/HBars";
 import { Empty, Figure, FigureStrip, InlineBar, Kv, Note, PageHeader, Section, Symbol, TextLink } from "@/components/ui";
 import { Segmented } from "@/components/ui/Segmented";
 import { ShowMore } from "@/components/ui/ShowMore";
+import { intradayView } from "@/lib/data/intraday";
 import { artifacts, diff, drift, optimizer, portfolio, risk, taxLots } from "@/lib/data/latest";
-import { dateMDY, dateShort, humanize, money, num, pct, plural, signed, tone } from "@/lib/format";
+import { dateMDY, dateShort, humanize, money, num, pct, plural, signed, timeShort, tone } from "@/lib/format";
 import { accountLabel, etfLabels, riskLimits } from "@/lib/labels";
 import type { Position } from "@/lib/types";
 
@@ -28,7 +29,9 @@ export default function PortfolioPage() {
   const etf = etfLabels();
   const limits = riskLimits();
 
-  const total = p.meta.broker_total_value ?? p.meta.total_value;
+  const iv = intradayView();
+  const live = iv?.usable ? iv.data : null;
+  const total = live?.total_value ?? p.meta.broker_total_value ?? p.meta.total_value;
   const gain = p.meta.total_value - p.meta.total_cost;
   const gainPct = p.meta.total_cost ? gain / p.meta.total_cost : null;
   const change = df?.total_change ?? null;

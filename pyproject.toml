@@ -1,6 +1,6 @@
 [project]
 name = "focos"
-version = "0.3.1"
+version = "0.3.2"
 description = "Family Office Chief Of Staff: bank ledger, brokerage holdings, and scheduled AI briefs for a household"
 requires-python = ">=3.13"
 dependencies = [
