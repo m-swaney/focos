@@ -85,7 +85,12 @@ export default function Today() {
   const order = entities();
   const h = health();
 
-  const date = br?.date ?? pf?.meta.asof ?? null;
+  // Between daily runs the service re-prices holdings, so the page is showing today even though the newest
+  // brief is yesterday's. Title the page by the freshest thing on it, and let the brief card carry its own date.
+  const iv = intradayView();
+  const live = iv?.usable ? iv.data : null;
+  const date = live?.asof?.slice(0, 10) ?? br?.date ?? pf?.meta.asof ?? null;
+  const briefIsOlder = !!(live && br?.date && date && br.date < date);
   const md = br ? briefText(br.mode ?? "daily", br.date) : null;
   const actions = briefSectionMatching(md, /^##\s+Actions( for .+)?\s*$/m);
   const actionsMeaningful = actions && !/^(none|nothing)\b/i.test(actions.replace(/[*_`]/g, "").trim());
@@ -136,8 +141,6 @@ export default function Today() {
 
   // Net worth. Between daily runs the service re-prices the same holdings from delayed quotes, so prefer those
   // marks when they are fresh and say so; the broker's own totals are the headline right after a run.
-  const iv = intradayView();
-  const live = iv?.usable ? iv.data : null;
   const snapshotInvestments = pf?.meta.broker_total_value ?? pf?.meta.total_value ?? null;
   const investments = live?.total_value ?? snapshotInvestments;
   const netWorth = cons?.available ? (cons.net_worth ?? 0) + (live?.change_since_snapshot ?? 0) : null;
@@ -187,7 +190,16 @@ export default function Today() {
 
   return (
     <>
-      <PageHeader title={date ? dateLong(date) : "Today"} sub={h.daily ? `${h.label.toLowerCase()}${h.daily.finished ? `, ${timeShort(h.daily.finished)}` : ""}` : undefined} />
+      <PageHeader
+        title={date ? dateLong(date) : "Today"}
+        sub={
+          briefIsOlder
+            ? `live prices, newest brief ${dateShort(br!.date)}`
+            : h.daily
+              ? `${h.label.toLowerCase()}${h.daily.finished ? `, ${timeShort(h.daily.finished)}` : ""}`
+              : undefined
+        }
+      />
 
       <div className="grid grid-cols-12 gap-4">
         {/* Row 1: attention and headline */}
