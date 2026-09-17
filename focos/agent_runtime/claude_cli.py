@@ -19,6 +19,10 @@ class ClaudeNotFound(RuntimeError):
     pass
 
 
+class MissingGate(RuntimeError):
+    """Trade tools were requested but the PreToolUse gate settings file is absent."""
+
+
 def find_claude(explicit: str | None = "auto") -> str | None:
     if explicit and explicit != "auto":
         return explicit if Path(explicit).exists() else None
@@ -42,6 +46,39 @@ def stage_a_args(adapter: BrokerAdapter, *, model: str, budget_usd: float, mcp_c
     allow = adapter.readonly_tools_stage_a()
     deny = DENY_BUILTINS + ["Edit", "Write"] + adapter.trade_tools() + adapter.denied_tools()
     return _common(model, budget_usd, mcp_config) + ["--allowedTools", ",".join(allow), "--disallowedTools", ",".join(deny)]
+
+
+TRADE_WRITE_SCOPES = ["state/sandbox/proposals/**", "state/decisions.jsonl"]
+
+
+def stage_trade_args(adapter: BrokerAdapter, *, model: str, budget_usd: float, mcp_config: Path, settings_file: Path,
+                     system_prompt: Path, trade_enabled: bool) -> list[str]:
+    """An intraday trading pass: broker reads plus, when the sandbox says so, the trade tools. Narrower than
+    Stage C on purpose -- it writes proposals and decisions, never reports or config, and never touches the
+    inbox or updates. The PreToolUse gate in settings_file still checks every order."""
+    allow = list(FILE_TOOLS)
+    for scope in TRADE_WRITE_SCOPES:
+        allow += [f"Edit({scope})", f"Write({scope})"]
+    allow += adapter.readonly_tools_stage_c() + [f"mcp__{adapter.mcp_server_name}__{t}" for t in
+                                                 ("get_accounts", "get_equity_positions", "get_portfolio", "get_equity_orders")]
+    deny = list(DENY_BUILTINS)
+    for scope in PROTECTED_SCOPES + ["reports/**", "state/updates/**"]:
+        deny += [f"Edit({scope})", f"Write({scope})"]
+    deny += adapter.denied_tools()
+    if trade_enabled:
+        # The settings file carries the PreToolUse gate. Handing over place_equity_order without it would put
+        # real orders on an unchecked path, so refuse to build the arguments at all rather than degrade.
+        if not settings_file.exists():
+            raise MissingGate(f"refusing to enable trade tools: no settings file at {settings_file}")
+        allow += adapter.trade_tools()
+    else:
+        deny += adapter.trade_tools()
+    args = _common(model, budget_usd, mcp_config)
+    args += ["--append-system-prompt-file", str(system_prompt), "--allowedTools", ",".join(allow),
+             "--disallowedTools", ",".join(deny)]
+    if settings_file.exists():
+        args += ["--settings", str(settings_file)]
+    return args
 
 
 def debug_args(debug_file: Path | None) -> list[str]:

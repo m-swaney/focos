@@ -6,6 +6,7 @@ agent mode (the model reads files itself) and api/daily|weekly|monthly.md for ap
 from __future__ import annotations
 
 from datetime import date as _date
+from datetime import datetime as _datetime
 
 from .. import paths, settings
 from . import outputs
@@ -24,6 +25,10 @@ API_RESULT_CONTRACT = ("\n\nOutput format: first the complete markdown brief (H2
                        '"updates": [update objects per the system prompt], "note_replies": [{"note_id": str, "reply": str}]}. '
                        "Nothing after the JSON block.")
 SNAPSHOT_SUFFIX = "\n\nReturn ONLY the JSON object. No prose, no markdown fences, no commentary before or after."
+TRADE_RESULT_CONTRACT = ("\n\nWhen finished, end your chat response with a fenced ```json block containing exactly: "
+                         '{"summary_line": str, "proposals": [str], "trades_placed": [str], "exits_taken": [str], '
+                         '"blocked": [{"symbol": str, "reason": str}], "decisions_logged": int}. '
+                         'summary_line is one sentence; "no action" is a complete and acceptable one.')
 
 
 def snapshot_schema_text() -> str:
@@ -71,6 +76,19 @@ def render(template: str, date: str, run_id: str = "manual", run_mode: str | Non
     if template == "snapshot":
         return text + snapshot_schema_text() + SNAPSHOT_SUFFIX
     return text + (API_RESULT_CONTRACT if variant == "api" else RESULT_CONTRACT)
+
+
+def render_trade_snapshot(date: str, run_id: str = "manual") -> str:
+    """T-A of a trading pass: the live read of the Agentic account."""
+    text = (paths.AGENT / "prompts" / "trade_snapshot.md").read_text(encoding="utf-8")
+    return render_placeholders(text, date=date, run_id=run_id, run_mode="trade") + SNAPSHOT_SUFFIX
+
+
+def render_trade(date: str, run_id: str = "manual", now: _datetime | None = None) -> str:
+    """T-C of a trading pass. {{TIME}} is filled so the model knows how much of the session is left."""
+    text = (paths.AGENT / "prompts" / "trade.md").read_text(encoding="utf-8")
+    at = (now or _datetime.now()).strftime("%H:%M")
+    return render_placeholders(text.replace("{{TIME}}", at), date=date, run_id=run_id, run_mode="trade") + TRADE_RESULT_CONTRACT
 
 
 def system_prompt() -> str:

@@ -79,7 +79,9 @@ def test_blocklist_min_price_and_symbol_shape():
 
 def test_market_hours_and_order_shape():
     v = rules.validate(order(), ctx(now=datetime(2026, 9, 5, 11, 0, tzinfo=ET)), RULES)  # Saturday
-    assert any("09:30" in r for r in v.reasons)
+    assert not v.ok and any("weekend" in r for r in v.reasons)
+    v = rules.validate(order(), ctx(now=datetime(2026, 9, 4, 17, 0, tzinfo=ET)), RULES)  # Friday, after the close
+    assert not v.ok and any("regular hours" in r for r in v.reasons)
     v = rules.validate(order(type="limit", dollar_amount="100"), ctx(), RULES)
     assert any("dollar_amount requires" in r for r in v.reasons) and any("limit_price" in r for r in v.reasons)
     v = rules.validate(order(type="stop_market"), ctx(), RULES)

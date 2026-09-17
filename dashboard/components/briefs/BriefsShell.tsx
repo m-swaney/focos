@@ -6,13 +6,13 @@ import { Chip, Empty, PageHeader } from "@/components/ui";
 import { Segmented } from "@/components/ui/Segmented";
 import { briefText, briefs, decisions } from "@/lib/data/briefs";
 import { dateMonthYear, dateShort } from "@/lib/format";
-import type { BriefRef, Mode } from "@/lib/types";
+import type { BriefKind, BriefRef } from "@/lib/types";
 
-const KIND: Record<Mode, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+const KIND: Record<BriefKind, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
 
 export function BriefsShell({ kind, id }: { kind?: string; id?: string }) {
   const list = briefs();
-  const selected = kind && id ? list.find((b) => b.kind === kind && b.id === id) ?? { kind: kind as Mode, id, file: "", mtime: 0 } : list[0];
+  const selected = kind && id ? list.find((b) => b.kind === kind && b.id === id) ?? { kind: kind as BriefKind, id, file: "", mtime: 0 } : list[0];
   const text = selected ? briefText(selected.kind, selected.id) : null;
   const dec = decisions(50);
 

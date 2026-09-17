@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import sys
 
-from .base import JOB_NAMES, Job, JobStatus, Schedule, Scheduler, run_jobs, service_job  # noqa: F401
+from .base import (JOB_NAMES, TRADE_JOB_PREFIX, Job, JobStatus, Schedule, Scheduler, run_jobs,  # noqa: F401
+                   service_job, trade_job_name)
 
 
 class UnsupportedScheduler:

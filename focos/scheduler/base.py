@@ -11,6 +11,12 @@ from .. import paths, settings
 
 JOB_NAMES = {"daily": "focos-daily", "weekly": "focos-weekly", "monthly": "focos-monthly", "keepalive": "focos-keepalive",
              "service": "focos-dashboard"}
+TRADE_JOB_PREFIX = "focos-trade"
+
+
+def trade_job_name(index: int) -> str:
+    """One job per configured intraday time; the index keeps Task Scheduler names stable across reinstalls."""
+    return f"{TRADE_JOB_PREFIX}-{index + 1}"
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri"]
 DAY_INDEX = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
 
@@ -96,6 +102,15 @@ def run_jobs(cfg: dict | None = None) -> list[Job]:
         jobs.append(Job(key=key, name=JOB_NAMES[key], description=f"focos {key} run", schedule=schedule,
                         argv=_base_argv(True) + ["run", "--mode", key], cwd=str(paths.HOME),
                         log=str(paths.LOGS / f"scheduler-{key}.log")))
+    t = sched.get("trade") or {}
+    if t.get("enabled", True):
+        # Weekdays only, and only inside regular hours: an order placed outside them is rejected by the gate
+        # anyway, so a job scheduled there would burn tokens to achieve nothing.
+        for i, at in enumerate(t.get("times") or ["10:30", "15:00"]):
+            jobs.append(Job(key=f"trade{i + 1}", name=trade_job_name(i), description=f"focos intraday trading pass ({at})",
+                            schedule=Schedule(kind="weekdays", time=str(at)),
+                            argv=_base_argv(True) + ["run", "--mode", "trade"], cwd=str(paths.HOME),
+                            time_limit_minutes=15, log=str(paths.LOGS / f"scheduler-trade{i + 1}.log")))
     k = sched.get("keepalive") or {}
     if (cfg.get("holdings") or {}).get("source") == "robinhood_mcp" and k.get("enabled", True):
         # every day (weekends included): one cheap read so the broker OAuth token is refreshed before it lapses

@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import datetime
 from typing import Any
+
+from . import market_calendar
 
 SYMBOL_RE = re.compile(r"^[A-Z][A-Z.\-]{0,6}$")
 
@@ -39,11 +41,15 @@ def _f(v: Any) -> float | None:
         return None
 
 
-def is_regular_hours(now: datetime) -> bool:
-    if now.weekday() >= 5:
-        return False
-    t = now.timetz().replace(tzinfo=None)
-    return time(9, 30) <= t <= time(16, 0)
+def _is_time_of_day_reason(reason: str) -> bool:
+    """Distinguish "the market is shut today" from "it is shut right now". The first blocks any order type;
+    the second only blocks market orders, since a limit order can legitimately rest until the next session."""
+    return reason.startswith("before the") or reason.startswith("after the")
+
+
+def is_regular_hours(now: datetime, no_trading_days: list[str] | None = None) -> bool:
+    """Market holidays and 13:00 half-day closes count, not just the weekend and the clock."""
+    return market_calendar.is_open(now, no_trading_days)
 
 
 def validate(order: dict, ctx: dict, rules: dict) -> Verdict:
@@ -78,8 +84,11 @@ def validate(order: dict, ctx: dict, rules: dict) -> Verdict:
         r.append(f"order type must be market or limit, got '{otype}'")
     if hours != "regular_hours":
         r.append("only regular_hours orders are allowed")
-    if otype == "market" and not is_regular_hours(ctx["now"]) and rules.get("market_orders_only_during_rth", True):
-        r.append("market orders only between 09:30 and 16:00 ET on weekdays")
+    closed = market_calendar.why_closed(ctx["now"], rules.get("no_trading_days") or [])
+    if closed and not _is_time_of_day_reason(closed):
+        r.append(f"no trading today: {closed}")   # holiday or an explicit no_trading_days date, whatever the order type
+    elif otype == "market" and closed and rules.get("market_orders_only_during_rth", True):
+        r.append(f"market orders only during regular hours ({closed})")
     if (qty is None) == (dollars is None):
         r.append("provide exactly one of quantity or dollar_amount")
     if dollars is not None and otype != "market":

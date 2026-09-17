@@ -3,9 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { REPORTS, SANDBOX, STATE } from "@/lib/data/paths";
 import { readJsonl } from "@/lib/data/read";
-import type { BriefRef, Decision, GateEntry, Mode } from "@/lib/types";
+import type { BriefKind, BriefRef, Decision, GateEntry } from "@/lib/types";
 
-const KINDS: Mode[] = ["daily", "weekly", "monthly"];
+// a trade pass writes no brief, so it is deliberately absent here
+const KINDS: BriefKind[] = ["daily", "weekly", "monthly"];
 
 export function briefs(): BriefRef[] {
   const out: BriefRef[] = [];
@@ -21,7 +22,7 @@ export function briefs(): BriefRef[] {
   return out.sort((a, b) => b.id.localeCompare(a.id) || KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind));
 }
 
-export const isMode = (s: string): s is Mode => (KINDS as string[]).includes(s);
+export const isMode = (s: string): s is BriefKind => (KINDS as string[]).includes(s);
 
 export function briefText(kind: string, id: string): string | null {
   if (!isMode(kind) || !/^[0-9A-Za-z\-]+$/.test(id)) return null;

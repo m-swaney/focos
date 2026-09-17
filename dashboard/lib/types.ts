@@ -1,7 +1,10 @@
 export type EntityKey = string;
 export type AccountKey = string;
 export type Severity = "info" | "warn" | "critical";
-export type Mode = "daily" | "weekly" | "monthly";
+/** A scheduled run. `trade` is an intraday sandbox pass: it places orders and writes no brief. */
+export type Mode = "daily" | "weekly" | "monthly" | "trade";
+/** The run modes that produce a written brief, which is every mode but `trade`. */
+export type BriefKind = Exclude<Mode, "trade">;
 
 export interface BrokerPortfolio {
   total_value: number;
@@ -572,4 +575,4 @@ export interface GateEntry {
   order?: { symbol?: string; side?: string; type?: string; dollar_amount?: number; ref_id?: string; account_last4?: string };
 }
 
-export type BriefRef = { kind: Mode; id: string; file: string; mtime: number };
+export type BriefRef = { kind: BriefKind; id: string; file: string; mtime: number };

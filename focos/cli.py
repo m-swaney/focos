@@ -141,16 +141,35 @@ def render_prompt(mode: str = typer.Option("daily", help="snapshot | daily | wee
 
 
 @app.command("run")
-def run_cycle(mode: str = typer.Option("daily", help="daily | weekly | monthly"), date: str = typer.Option(None),
+def run_cycle(mode: str = typer.Option("daily", help="daily | weekly | monthly | trade"), date: str = typer.Option(None),
               skip_a: bool = typer.Option(False, "--skip-a", help="reuse the latest holdings snapshot"),
               skip_b: bool = typer.Option(False, "--skip-b"), skip_c: bool = typer.Option(False, "--skip-c"),
               no_git: bool = typer.Option(False, "--no-git"), heavy: bool = typer.Option(None),
+              force: bool = typer.Option(False, "--force", help="trade mode: run even outside regular hours"),
               dry_run: bool = typer.Option(False, "--dry-run", help="print what would run and exit")) -> None:
-    """One full cycle: holdings snapshot, pipeline, brief, backup, commit (replaces scripts/run_agent.ps1)."""
+    """One full cycle: holdings snapshot, pipeline, brief, backup, commit (replaces scripts/run_agent.ps1).
+
+    `--mode trade` is the odd one out: an intraday pass that reads the Agentic account live and trades inside
+    the sandbox rules. No snapshot, no pipeline, no brief."""
     from .orchestrator import run as orch
 
+    if mode == "trade":
+        from .orchestrator import trade as trade_mod
+        from .sandbox import state as sandbox_state
+
+        if dry_run:
+            _echo({"mode": "trade", "would_skip": trade_mod.why_not(),
+                   "now": trade_mod.market_now().isoformat(timespec="seconds"),
+                   "trading_enabled": sandbox_state.trading_enabled()})
+            return
+        tr = trade_mod.run_pass(date=date, force=force)
+        _echo({"run_id": tr.run_id, "ok": tr.ok, "skipped": tr.skipped, "stages": tr.stages,
+               "trades_placed": tr.trades_placed, "proposals": tr.proposals, "commit": tr.commit, "log": tr.log_file})
+        if not tr.ok:
+            raise typer.Exit(1)
+        return
     if mode not in ("daily", "weekly", "monthly"):
-        raise typer.BadParameter("mode must be daily, weekly, or monthly")
+        raise typer.BadParameter("mode must be daily, weekly, monthly, or trade")
     opts = orch.RunOptions(mode=mode, date=date, skip_a=skip_a, skip_b=skip_b, skip_c=skip_c, no_git=no_git,
                            heavy=heavy, dry_run=dry_run)
     if dry_run:

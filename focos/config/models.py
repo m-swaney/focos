@@ -96,6 +96,13 @@ def _coerce_time(v):
     return v
 
 
+def _coerce_times(v):
+    """A list of HH:MM. A bare string is accepted so `times: "10:30"` in hand-edited YAML still works."""
+    if isinstance(v, str):
+        v = [v]
+    return [_coerce_time(x) for x in v] if isinstance(v, list) else v
+
+
 class DailySchedule(_Lenient):
     days: Literal["weekdays", "daily"] = "weekdays"
     time: str = "16:35"
@@ -121,6 +128,14 @@ class KeepaliveSchedule(_Lenient):
     _t = field_validator("time", mode="before")(_coerce_time)
 
 
+class TradeSchedule(_Lenient):
+    """Intraday trading passes. The daily run lands after the close, where the sandbox rules reject every
+    market order, so a live sandbox needs at least one pass inside regular hours to trade or honour a stop."""
+    enabled: bool = True
+    times: list[str] = ["10:30", "15:00"]
+    _t = field_validator("times", mode="before")(_coerce_times)
+
+
 _TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
@@ -129,6 +144,7 @@ class ScheduleSettings(_Lenient):
     weekly: WeeklySchedule = WeeklySchedule()
     monthly: MonthlySchedule = MonthlySchedule()
     keepalive: KeepaliveSchedule = KeepaliveSchedule()
+    trade: TradeSchedule = TradeSchedule()
 
     @model_validator(mode="after")
     def _times(self):
@@ -136,6 +152,11 @@ class ScheduleSettings(_Lenient):
             t = getattr(self, name).time
             if not _TIME.match(str(t)):
                 raise ValueError(f"schedule.{name}.time must be HH:MM (24h), got {t!r}")
+        for t in self.trade.times:
+            if not _TIME.match(str(t)):
+                raise ValueError(f"schedule.trade.times must be HH:MM (24h), got {t!r}")
+        if len(set(self.trade.times)) != len(self.trade.times):
+            raise ValueError("schedule.trade.times must not repeat a time")
         return self
 
 

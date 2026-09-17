@@ -45,4 +45,5 @@ def status():
 
 @router.post("/uninstall")
 def uninstall():
-    return {"removed": scheduler.current().uninstall([scheduler.JOB_NAMES[k] for k in ("daily", "weekly", "monthly", "keepalive")])}
+    # from run_jobs(), not a hardcoded list, so the configurable intraday trade jobs are removed too
+    return {"removed": scheduler.current().uninstall([j.name for j in scheduler.run_jobs()])}

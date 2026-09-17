@@ -91,7 +91,7 @@ export function health(): Health {
     daily,
     hoursSinceDaily,
     stale,
-    runs: (["daily", "weekly", "monthly"] as Mode[]).map((mode) => ({ mode, run: st[mode] })),
+    runs: (["daily", "weekly", "monthly", "trade"] as Mode[]).map((mode) => ({ mode, run: st[mode] })),
     tokens,
     subscription: tk?.subscription,
     keepalive,

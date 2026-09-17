@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from .. import paths, settings
 from . import brokers
+from . import live
 from . import rules as rules_mod
 from . import state as sb_state
 
@@ -69,6 +70,17 @@ def build_context(tool: str, order: dict, now: datetime | None = None) -> dict:
                                "sellable": p.get("sellable") or p.get("quantity") or 0.0}
                  for p in (acct.get("positions") or [])}
     prices = {q["symbol"]: q["last"] for q in (cur or {}).get("quotes", []) if q.get("last")}
+    # An intraday pass publishes a fresh read of the agentic account; prefer it over the overnight snapshot so
+    # cash and prices are current. Stale or missing, the snapshot stands and sizing stays conservative.
+    live_view = live.read()
+    live_fresh = live.fresh(live_view, now)
+    if live_fresh:
+        lp = live_view.get("portfolio") or {}
+        portfolio = {**portfolio, "total_value": lp.get("total_value"), "cash": lp.get("cash")}
+        positions = {p["symbol"]: {"value": p.get("value") or 0.0, "quantity": p.get("quantity") or 0.0,
+                                   "sellable": p.get("sellable") or p.get("quantity") or 0.0}
+                     for p in (live_view.get("positions") or [])}
+        prices = {**prices, **(live_view.get("quotes") or {})}
     recent = [e for e in _recent_gate_entries(7) if e.get("tool") == "place" and e.get("ok")]
     run_window = now - timedelta(minutes=90)
     this_run = [e for e in recent if datetime.fromisoformat(e["ts"]) >= run_window]
@@ -95,6 +107,7 @@ def build_context(tool: str, order: dict, now: datetime | None = None) -> dict:
         "orders_this_run": len(this_run),
         "orders_this_week": len(recent),
         "buy_notional_this_week": sum(float(e.get("notional") or 0) for e in recent if e.get("side") == "buy"),
+        "live": {"used": live_fresh, "age_minutes": live.age_minutes(live_view, now)},
         "proposal": proposal,
         "approved": bool(ref_id) and (paths.APPROVALS / f"{ref_id}.approved").exists(),
     }
