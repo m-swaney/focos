@@ -15,7 +15,7 @@ def test_run_jobs_from_config(initialized_home: Path):
         "daily": {"days": "daily", "time": "07:05"}, "weekly": {"day": "sat", "time": "09:00"}, "monthly": {"day": 3, "time": "20:15"}}}))
     settings.reset()
     jobs = {j.key: j for j in scheduler.run_jobs()}
-    assert set(jobs) == {"daily", "weekly", "monthly", "trade1", "trade2"}  # trade passes are on by default
+    assert set(jobs) == {"daily", "weekly", "monthly", "trade1", "trade2", "trade3"}  # trade passes are on by default
     d = jobs["daily"]
     assert d.schedule.kind == "daily" and d.schedule.hour == 7 and d.schedule.minute == 5
     assert d.argv[1:4] == ["-I", "-m", "focos"] and "--home" in d.argv and str(paths.HOME) in d.argv
@@ -84,16 +84,20 @@ def test_schedule_model_helpers():
     assert scheduler.current().platform in ("windows", "macos", sys.platform)
 
 
-def test_trade_jobs_default_to_two_intraday_passes(initialized_home: Path):
+def test_trade_jobs_default_to_three_intraday_passes(initialized_home: Path):
     jobs = {j.key: j for j in scheduler.run_jobs()}
-    one, two = jobs["trade1"], jobs["trade2"]
-    assert one.name == "focos-trade-1" and two.name == "focos-trade-2"
+    one, two, three = jobs["trade1"], jobs["trade2"], jobs["trade3"]
+    assert one.name == "focos-trade-1" and three.name == "focos-trade-3"
     assert (one.schedule.hour, one.schedule.minute) == (10, 30)
-    assert (two.schedule.hour, two.schedule.minute) == (15, 0)
+    assert (two.schedule.hour, two.schedule.minute) == (12, 45)
+    assert (three.schedule.hour, three.schedule.minute) == (15, 0)
     # weekdays only, and short: a pass that cannot finish in 15 minutes has hung, not found a better trade
     assert one.schedule.kind == "weekdays" and one.schedule.weekdays() == ["mon", "tue", "wed", "thu", "fri"]
     assert one.time_limit_minutes == 15
     assert one.argv[-3:] == ["run", "--mode", "trade"]
+    # only the midday pass is exits-only: it honours stops while the market is open but opens nothing
+    assert two.argv[-4:] == ["run", "--mode", "trade", "--exits-only"]
+    assert three.argv[-3:] == ["run", "--mode", "trade"]
 
 
 def test_trade_jobs_configurable_and_disablable(initialized_home: Path):
@@ -102,6 +106,15 @@ def test_trade_jobs_configurable_and_disablable(initialized_home: Path):
     settings.reset()
     jobs = {j.key: j for j in scheduler.run_jobs()}
     assert [jobs[f"trade{i}"].schedule.time for i in (1, 2, 3)] == ["09:45", "12:00", "15:30"]
+    # custom times and no word about exits: every pass trades, rather than an error about a 12:45 default
+    assert all("--exits-only" not in jobs[f"trade{i}"].argv for i in (1, 2, 3))
+
+    (initialized_home / "config" / "focos.yml").write_text(yaml.safe_dump({"schedule": {
+        "trade": {"times": ["09:45", "12:00", "15:30"], "exits_only": ["12:00"]}}}))
+    settings.reset()
+    jobs = {j.key: j for j in scheduler.run_jobs()}
+    assert jobs["trade2"].argv[-1] == "--exits-only"
+    assert "--exits-only" not in jobs["trade1"].argv
 
     (initialized_home / "config" / "focos.yml").write_text(yaml.safe_dump({"schedule": {"trade": {"enabled": False}}}))
     settings.reset()

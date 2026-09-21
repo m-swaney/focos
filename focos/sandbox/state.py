@@ -13,6 +13,33 @@ def kill_file():
     return paths.SANDBOX / "KILL"
 
 
+def pass_file():
+    """Marker for the pass in flight, written by the orchestrator and read by the gate hook."""
+    return paths.SANDBOX / "pass.json"
+
+
+def start_pass(kind: str, run_id: str) -> None:
+    settings.write_json(pass_file(), {"kind": kind, "run_id": run_id,
+                                      "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+
+
+def end_pass() -> None:
+    pass_file().unlink(missing_ok=True)
+
+
+def set_drawdown_basis(value: float | None) -> dict:
+    """Reset the capital basis the drawdown halt measures against. Called by `focos sandbox resume` after
+    the owner has looked at a halted account and decided to carry on from where it stands."""
+    m = load_mode()
+    if value is None:
+        m.pop("drawdown_basis", None)
+    else:
+        m["drawdown_basis"] = float(value)
+    m["changed_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    save_mode(m)
+    return m
+
+
 
 
 def load_mode() -> dict:
@@ -85,8 +112,11 @@ def summary(snapshot: dict | None) -> dict:
         "warmup_remaining": max(0, int(rules.get("warmup_runs", 10)) - int(m.get("run_count", 0))),
         "trading_enabled": trading_enabled(),
         "live_orders": m.get("live_orders", 0),
+        "drawdown_basis": m.get("drawdown_basis"),
         "rules": {k: rules.get(k) for k in ("budget_usd", "max_position_weight", "max_order_usd", "weekly_budget_usd",
-                                             "max_orders_per_run", "max_orders_per_week", "instruments", "min_price")},
+                                             "max_orders_per_run", "max_orders_per_week", "instruments", "min_price",
+                                             "max_drawdown_pct", "equity_ceiling_multiple", "cash_floor_pct",
+                                             "require_approval_first_n")},
         "account": {
             "last4": agentic.get("last4") if agentic else None,
             "portfolio": agentic.get("portfolio") if agentic else None,

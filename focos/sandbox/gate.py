@@ -42,6 +42,24 @@ def _agentic_number(raw: dict | None) -> str | None:
     return brokers.current().sandbox_account_number(raw)
 
 
+def _pass_kind(now: datetime) -> str:
+    """Which kind of trading pass is running, from the marker `trade.py` writes before it hands over. The
+    gate is a separate process, so a file is the only channel; a stale marker is ignored rather than trusted,
+    which fails toward the normal pass the schedule intended."""
+    marker = sb_state.pass_file()
+    if not marker.exists():
+        return "trade"
+    data = settings.read_json(marker, {}) or {}
+    started = data.get("started_at")
+    try:
+        age = (now - datetime.fromisoformat(str(started))).total_seconds() / 60
+    except Exception:
+        return "trade"
+    if age < 0 or age > live.MAX_AGE_MINUTES:
+        return "trade"
+    return "exits" if data.get("kind") == "exits" else "trade"
+
+
 def _recent_gate_entries(days: int = 7) -> list[dict]:
     log = gate_log()
     if not log.exists():
@@ -99,6 +117,8 @@ def build_context(tool: str, order: dict, now: datetime | None = None) -> dict:
         "mode": sb.get("mode"),
         "run_count": sb.get("run_count", 0),
         "live_orders": sb.get("live_orders", 0),
+        "pass_kind": _pass_kind(now),
+        "drawdown_basis": sb.get("drawdown_basis"),
         "agentic_account_number": _agentic_number(raw),
         "equity": float(portfolio.get("total_value") or 0),
         "cash": float(portfolio.get("cash") or 0),

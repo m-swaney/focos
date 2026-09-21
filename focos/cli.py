@@ -146,6 +146,8 @@ def run_cycle(mode: str = typer.Option("daily", help="daily | weekly | monthly |
               skip_b: bool = typer.Option(False, "--skip-b"), skip_c: bool = typer.Option(False, "--skip-c"),
               no_git: bool = typer.Option(False, "--no-git"), heavy: bool = typer.Option(None),
               force: bool = typer.Option(False, "--force", help="trade mode: run even outside regular hours"),
+              exits_only: bool = typer.Option(False, "--exits-only",
+                                              help="trade mode: manage open positions only; the gate refuses buys"),
               dry_run: bool = typer.Option(False, "--dry-run", help="print what would run and exit")) -> None:
     """One full cycle: holdings snapshot, pipeline, brief, backup, commit (replaces scripts/run_agent.ps1).
 
@@ -158,11 +160,11 @@ def run_cycle(mode: str = typer.Option("daily", help="daily | weekly | monthly |
         from .sandbox import state as sandbox_state
 
         if dry_run:
-            _echo({"mode": "trade", "would_skip": trade_mod.why_not(),
+            _echo({"mode": "trade", "exits_only": exits_only, "would_skip": trade_mod.why_not(),
                    "now": trade_mod.market_now().isoformat(timespec="seconds"),
                    "trading_enabled": sandbox_state.trading_enabled()})
             return
-        tr = trade_mod.run_pass(date=date, force=force)
+        tr = trade_mod.run_pass(date=date, force=force, exits_only=exits_only)
         _echo({"run_id": tr.run_id, "ok": tr.ok, "skipped": tr.skipped, "stages": tr.stages,
                "trades_placed": tr.trades_placed, "proposals": tr.proposals, "commit": tr.commit, "log": tr.log_file})
         if not tr.ok:
@@ -277,7 +279,10 @@ def schedule_uninstall() -> None:
 def schedule_status() -> None:
     from . import scheduler
 
-    _echo([s.model_dump() for s in scheduler.current().status()])
+    # Trade jobs are numbered from the config rather than named in JOB_NAMES, so ask for them by name --
+    # otherwise the intraday passes run without ever showing up in status.
+    names = list(scheduler.JOB_NAMES.values()) + [j.name for j in scheduler.run_jobs() if j.key.startswith("trade")]
+    _echo([s.model_dump() for s in scheduler.current().status(names)])
 
 
 @schedule_app.command("show")
@@ -640,6 +645,26 @@ def sandbox_kill(on: bool = True) -> None:
     elif state.kill_file().exists():
         state.kill_file().unlink()
     _echo({"killed": state.killed()})
+
+
+@sandbox_app.command("resume")
+def sandbox_resume(basis: float = typer.Option(None, "--basis",
+                                               help="capital basis to measure the next drawdown against; "
+                                                    "defaults to the account's current value"),
+                   clear: bool = typer.Option(False, "--clear", help="forget the override and use the configured basis")) -> None:
+    """Lift a drawdown halt. The halt blocks buys once the account falls below max_drawdown_pct of its
+    contributed capital; resuming re-bases it so trading continues from where the account actually stands."""
+    from .sandbox import live
+    from .sandbox import state
+    if clear:
+        _echo({"drawdown_basis": None, **state.set_drawdown_basis(None)})
+        return
+    if basis is None:
+        view = live.read() or {}
+        basis = float((view.get("portfolio") or {}).get("total_value") or 0)
+        if not basis:
+            raise typer.BadParameter("no live account value on file; pass --basis explicitly")
+    _echo(state.set_drawdown_basis(basis))
 
 
 @sandbox_app.command("show")

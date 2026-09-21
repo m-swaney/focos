@@ -33,6 +33,9 @@ export default function SandboxPage() {
   }
   const acct = sb.account ?? {};
   const sc = sb.scorecard;
+  const live = sc?.live;
+  const account = sc?.account;
+  const approvalsNeeded = Math.max(0, Number(sb.rules?.require_approval_first_n ?? 0) - (sb.live_orders ?? 0));
   const proposals = [...(sb.proposals ?? [])].sort((a, b) => {
     const pa = !a.paper && !a.approved ? 0 : 1;
     const pb = !b.paper && !b.approved ? 0 : 1;
@@ -71,12 +74,42 @@ export default function SandboxPage() {
           }
         />
         <Figure label="Agentic account" value={money(acct.portfolio?.total_value ?? 0)} sub={`${money(acct.portfolio?.cash ?? 0)} cash, ending ${acct.last4 ?? "????"}`} />
-        <Figure label="Live orders placed" value={String(sb.live_orders ?? 0)} sub="the first five need approval" />
         <Figure
-          label="Paper score"
-          value={sc?.available && sc.n_positions ? signed(sc.avg_alpha_pct, (x) => pct(x)) : "n/a"}
-          tone={tone(sc?.avg_alpha_pct)}
-          sub={sc?.available && sc.n_positions ? `alpha vs SPY across ${plural(sc.n_positions, "position")}, hit rate ${pct(sc.hit_rate, 0)}` : "no scored positions yet"}
+          label="Live P&L"
+          value={live?.available ? signed(live.total_pnl_usd ?? 0, (x) => money(x)) : "n/a"}
+          tone={tone(live?.total_pnl_usd)}
+          sub={
+            live?.available
+              ? `${money(live.realized_pnl_usd ?? 0)} realized, ${money(live.unrealized_pnl_usd ?? 0)} open${live.avg_alpha_pct != null ? `, ${signed(live.avg_alpha_pct, (x) => pct(x))} vs SPY` : ""}`
+              : "no live fills yet"
+          }
+        />
+        <Figure
+          label={account?.halted ? "Halted" : "Drawdown"}
+          value={account ? pct(account.drawdown_pct, 0) : "n/a"}
+          tone={account?.halted ? "text-critical" : account && account.drawdown_pct > 0 ? "text-warn" : ""}
+          sub={
+            account ? (
+              <>
+                <Meter
+                  value={Math.min(account.drawdown_pct, account.halt_at_pct ?? 1)}
+                  max={account.halt_at_pct ?? 1}
+                  className="mb-1.5 mt-0.5 max-w-[160px]"
+                  tone={account.halted ? "loss" : "series"}
+                />
+                {account.halted
+                  ? "buys paused; run focos sandbox resume"
+                  : `halts at ${pct(account.halt_at_pct, 0)} of ${money(account.capital_basis)} contributed`}
+              </>
+            ) : (
+              "no account data yet"
+            )
+          }
+        />
+        <Figure
+          label="Live orders placed"
+          value={String(sb.live_orders ?? 0)}
+          sub={approvalsNeeded > 0 ? `the first ${approvalsNeeded} need approval` : "placed without approval"}
         />
       </FigureStrip>
 
@@ -202,11 +235,11 @@ export default function SandboxPage() {
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Section
-          title="Scorecard"
+          title="Paper scorecard"
           description={
             sc?.available && sc.n_positions
-              ? `beat SPY ${pct(sc.beat_spy_rate, 0)}, avg ${signed(sc.avg_return_pct, (x) => pct(x))}, P&L ${signed(sc.total_pnl_usd, (x) => money(x))}`
-              : "marked to market vs SPY"
+              ? `proposals never sent to the broker: beat SPY ${pct(sc.beat_spy_rate, 0)}, avg ${signed(sc.avg_return_pct, (x) => pct(x))}, P&L ${signed(sc.total_pnl_usd, (x) => money(x))}`
+              : "proposals never sent to the broker, marked to market vs SPY"
           }
          
         >

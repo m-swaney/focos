@@ -41,6 +41,21 @@ def _f(v: Any) -> float | None:
         return None
 
 
+def capital_basis(rules: dict, now: datetime) -> float:
+    """What the household has put into the sandbox: the initial funding plus the recurring weekly deposits
+    that have landed since. Gains are not capital, so the drawdown halt measures against this, not the peak."""
+    basis = float(rules.get("budget_usd", 1000))
+    growth = float(rules.get("budget_growth_per_week_usd", 0) or 0)
+    funded_on = rules.get("funded_on")
+    if growth and funded_on:
+        try:
+            weeks = max(0, (now.date() - datetime.fromisoformat(str(funded_on)).date()).days // 7)
+            basis += growth * weeks
+        except Exception:
+            pass
+    return basis
+
+
 def _is_time_of_day_reason(reason: str) -> bool:
     """Distinguish "the market is shut today" from "it is shut right now". The first blocks any order type;
     the second only blocks market orders, since a limit order can legitimately rest until the next session."""
@@ -71,6 +86,10 @@ def validate(order: dict, ctx: dict, rules: dict) -> Verdict:
     warm = int(rules.get("warmup_runs", 10))
     if int(ctx.get("run_count", 0)) < warm:
         r.append(f"warmup incomplete: {ctx.get('run_count', 0)}/{warm} runs")
+    # The 12:45 pass exists to honour stops, not to add risk. The gate enforces that, not the prompt, so the
+    # model cannot reinterpret its way into a new position.
+    if ctx.get("pass_kind") == "exits" and side == "buy":
+        r.append("this is an exits-only pass; no new positions")
 
     # --- account
     acct = str(order.get("account_number", ""))
@@ -111,7 +130,9 @@ def validate(order: dict, ctx: dict, rules: dict) -> Verdict:
     if price is None and limit_price is not None:
         price = limit_price
     if price is None:
-        r.append(f"no quote available for {symbol}; cannot size the order")
+        # The gate only knows the prices in the snapshot and the pass's own live read, which cover held
+        # names. A new name has to price itself, and a limit order does: its limit_price is the size.
+        r.append(f"no quote available for {symbol}; use a limit order so limit_price can size it")
     elif price < float(rules.get("min_price", 5.0)):
         r.append(f"{symbol} price {price:.2f} is below the {rules.get('min_price', 5.0)} minimum")
 
@@ -141,17 +162,18 @@ def validate(order: dict, ctx: dict, rules: dict) -> Verdict:
         wk_budget = float(rules.get("weekly_budget_usd", 500))
         if float(ctx.get("buy_notional_this_week", 0)) + notional > wk_budget + 0.005:
             r.append(f"weekly buy budget {wk_budget:.2f} would be exceeded")
-        budget = float(rules.get("budget_usd", 1000))
-        growth = float(rules.get("budget_growth_per_week_usd", 0) or 0)
-        funded_on = rules.get("funded_on")
-        if growth and funded_on:
-            try:
-                weeks = max(0, (ctx["now"].date() - datetime.fromisoformat(str(funded_on)).date()).days // 7)
-                budget += growth * weeks
-            except Exception:
-                pass
-        if equity > budget * 1.5:
-            r.append(f"account equity {equity:.2f} is far above the {budget:.2f} sandbox budget; withdraw excess first")
+        basis = float(ctx.get("drawdown_basis") or 0) or capital_basis(rules, ctx["now"])
+        # Opt-in deposit check. Off by default: an account that is winning should not have its own gains
+        # read as an unexpected deposit and be barred from buying.
+        ceiling = rules.get("equity_ceiling_multiple")
+        if ceiling and equity > basis * float(ceiling):
+            r.append(f"account equity {equity:.2f} is above {float(ceiling):.1f}x the {basis:.2f} sandbox "
+                     f"capital; withdraw the excess or raise equity_ceiling_multiple")
+        # Account-level stop. Buys only -- a halted account must still be able to sell its way out.
+        dd = float(rules.get("max_drawdown_pct") or 0)
+        if dd and basis > 0 and equity < basis * (1 - dd):
+            r.append(f"drawdown halt: equity {equity:.2f} is below {(1 - dd) * 100:.0f}% of the {basis:.2f} "
+                     f"contributed capital; new positions are paused until `focos sandbox resume`")
     if side == "sell":
         pos = positions.get(symbol)
         if not pos:
@@ -166,20 +188,22 @@ def validate(order: dict, ctx: dict, rules: dict) -> Verdict:
         if int(ctx.get("orders_this_week", 0)) >= int(rules.get("max_orders_per_week", 4)):
             r.append("max orders per week reached")
 
-    # --- proposal + approval
+    # --- proposal (place only: review_equity_order has no ref_id field to carry one, so requiring it there
+    # refused every pre-trade check and left no legitimate route to an order at all)
     prop = ctx.get("proposal")
-    if not order.get("ref_id"):
-        r.append("ref_id is required and must match a proposal file")
-    elif not prop:
-        r.append(f"no proposal file with ref_id {order.get('ref_id')}")
-    else:
-        if str(prop.get("symbol", "")).upper() != symbol or str(prop.get("side", "")).lower() != side:
-            r.append("proposal symbol/side do not match the order")
-        for k in ("thesis", "exit_plan", "stop_loss", "horizon_days"):
-            if not prop.get(k):
-                r.append(f"proposal is missing '{k}'")
-        if prop.get("paper"):
-            r.append("proposal is marked paper: true")
+    if tool == "place":
+        if not order.get("ref_id"):
+            r.append("ref_id is required and must match a proposal file")
+        elif not prop:
+            r.append(f"no proposal file with ref_id {order.get('ref_id')}")
+        else:
+            if str(prop.get("symbol", "")).upper() != symbol or str(prop.get("side", "")).lower() != side:
+                r.append("proposal symbol/side do not match the order")
+            for k in ("thesis", "exit_plan", "stop_loss", "horizon_days"):
+                if not prop.get(k):
+                    r.append(f"proposal is missing '{k}'")
+            if prop.get("paper"):
+                r.append("proposal is marked paper: true")
     if tool == "place":
         need_approval = int(ctx.get("live_orders", 0)) < int(rules.get("require_approval_first_n", 5))
         if need_approval and not ctx.get("approved"):

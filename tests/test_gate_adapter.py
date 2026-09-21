@@ -50,3 +50,18 @@ def test_allowed_tools_extra_from_adapter(initialized_home: Path):
     sb_state.set_mode("live")
     sb_state.save_mode({**sb_state.load_mode(), "run_count": 99})
     assert sb_state.allowed_tools_extra() == [REVIEW, PLACE]
+
+
+def test_agentic_number_resolves_from_a_trading_pass_raw_read(initialized_home: Path):
+    """A pass's own raw read is the newest file in state/raw while it runs, and it is scoped to one account
+    rather than carrying the full list. Missing that shape refused every order during a pass."""
+    from focos.sandbox.brokers.robinhood import RobinhoodAdapter
+
+    a = RobinhoodAdapter()
+    daily = {"accounts": [{"account_number": "90003333", "agentic_allowed": True},
+                          {"account_number": "90001111", "agentic_allowed": False}]}
+    assert a.sandbox_account_number(daily) == "90003333"
+    # the trade snapshot's shape: one account, stated at the top level
+    assert a.sandbox_account_number({"account_number": "90003333", "portfolio": {}, "positions": []}) == "90003333"
+    assert a.sandbox_account_number({}) is None
+    assert a.sandbox_account_number(None) is None

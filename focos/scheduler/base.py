@@ -106,10 +106,14 @@ def run_jobs(cfg: dict | None = None) -> list[Job]:
     if t.get("enabled", True):
         # Weekdays only, and only inside regular hours: an order placed outside them is rejected by the gate
         # anyway, so a job scheduled there would burn tokens to achieve nothing.
-        for i, at in enumerate(t.get("times") or ["10:30", "15:00"]):
-            jobs.append(Job(key=f"trade{i + 1}", name=trade_job_name(i), description=f"focos intraday trading pass ({at})",
+        exits = {str(x) for x in (t.get("exits_only") or [])}
+        for i, at in enumerate(t.get("times") or ["10:30", "12:45", "15:00"]):
+            exits_only = str(at) in exits
+            kind = "exits-only pass" if exits_only else "trading pass"
+            jobs.append(Job(key=f"trade{i + 1}", name=trade_job_name(i), description=f"focos intraday {kind} ({at})",
                             schedule=Schedule(kind="weekdays", time=str(at)),
-                            argv=_base_argv(True) + ["run", "--mode", "trade"], cwd=str(paths.HOME),
+                            argv=_base_argv(True) + ["run", "--mode", "trade"] + (["--exits-only"] if exits_only else []),
+                            cwd=str(paths.HOME),
                             time_limit_minutes=15, log=str(paths.LOGS / f"scheduler-trade{i + 1}.log")))
     k = sched.get("keepalive") or {}
     if (cfg.get("holdings") or {}).get("source") == "robinhood_mcp" and k.get("enabled", True):

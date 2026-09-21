@@ -121,7 +121,8 @@ def capture_live(date: str, run_id: str) -> dict:
     return view
 
 
-def run_pass(date: str | None = None, now: datetime | None = None, force: bool = False) -> TradeResult:
+def run_pass(date: str | None = None, now: datetime | None = None, force: bool = False,
+             exits_only: bool = False) -> TradeResult:
     paths.ensure_dirs()
     date = date or _date.today().isoformat()
     now = now or market_now()
@@ -164,17 +165,24 @@ def run_pass(date: str | None = None, now: datetime | None = None, force: bool =
     trade_enabled = sandbox_state.trading_enabled()
     rendered_system = paths.HOME_AGENT / "system.rendered.md"
     rendered_system.write_text(prompts.system_prompt() + "\n\n" + prompts.addendum("agent"), encoding="utf-8")
-    args = claude_cli.stage_trade_args(adapter, model=agent.get("model_trade") or "sonnet",
-                                       budget_usd=float((agent.get("budget_usd") or {}).get(MODE) or 2.0),
+    budget_key = "trade_exits" if exits_only else MODE
+    budget_default = 0.75 if exits_only else 6.0
+    args = claude_cli.stage_trade_args(adapter, model=agent.get("model_trade") or "opus",
+                                       budget_usd=float((agent.get("budget_usd") or {}).get(budget_key) or budget_default),
                                        mcp_config=files["mcp"], settings_file=files["settings"],
-                                       system_prompt=rendered_system, trade_enabled=trade_enabled)
+                                       system_prompt=rendered_system, trade_enabled=trade_enabled,
+                                       exits_only=exits_only)
     logp = paths.LOGS / f"{date}-{MODE}-C-{run_id[-6:]}.json"
     if agent.get("debug_claude"):
         args += claude_cli.debug_args(paths.LOGS / f"{date}-{MODE}-C-{run_id[-6:]}.debug.log")
-    log.info("T-C: trading pass (trade tools %s)", "on" if trade_enabled else "off")
+    log.info("T-C: %s pass (trade tools %s)", "exits-only" if exits_only else "trading",
+             "on" if trade_enabled else "off")
+    # The gate runs as its own process and cannot see this call's arguments, so the kind of pass goes on disk
+    # where the hook can read it. Cleared however this ends: a stale marker would mute the next pass's buys.
+    sandbox_state.start_pass("exits" if exits_only else "trade", run_id)
     try:
-        result = claude_cli.run(prompts.render_trade(date, run_id), args, log_path=logp, cwd=paths.HOME,
-                                claude=agent.get("claude_cli") or "auto")
+        result = claude_cli.run(prompts.render_trade(date, run_id, exits_only=exits_only), args, log_path=logp,
+                                cwd=paths.HOME, claude=agent.get("claude_cli") or "auto")
     except Exception as e:  # noqa: BLE001
         msg = f"{type(e).__name__}: {str(e)[:300]}"
         log.error("T-C failed: %s", msg)
@@ -183,8 +191,10 @@ def run_pass(date: str | None = None, now: datetime | None = None, force: bool =
         res.ok = False
         res.stages["C"] = f"failed: {msg}"
         return res
+    finally:
+        sandbox_state.end_pass()
 
-    meta = {**claude_io.summarize(result), "trade_tools": trade_enabled}
+    meta = {**claude_io.summarize(result), "trade_tools": trade_enabled, "exits_only": exits_only}
     if meta["is_error"]:
         msg = str(result.get("result") or result.get("error") or meta.get("subtype"))[:400]
         log.error("T-C failed: %s", msg)

@@ -52,15 +52,19 @@ TRADE_WRITE_SCOPES = ["state/sandbox/proposals/**", "state/decisions.jsonl"]
 
 
 def stage_trade_args(adapter: BrokerAdapter, *, model: str, budget_usd: float, mcp_config: Path, settings_file: Path,
-                     system_prompt: Path, trade_enabled: bool) -> list[str]:
+                     system_prompt: Path, trade_enabled: bool, exits_only: bool = False) -> list[str]:
     """An intraday trading pass: broker reads plus, when the sandbox says so, the trade tools. Narrower than
     Stage C on purpose -- it writes proposals and decisions, never reports or config, and never touches the
-    inbox or updates. The PreToolUse gate in settings_file still checks every order."""
+    inbox or updates. The PreToolUse gate in settings_file still checks every order.
+
+    The exits-only pass keeps the trade tools, because honouring a stop means selling, but loses the screening
+    and research reads: it is not there to find anything new, and a cheap pass is one that cannot wander."""
     allow = list(FILE_TOOLS)
     for scope in TRADE_WRITE_SCOPES:
         allow += [f"Edit({scope})", f"Write({scope})"]
-    allow += adapter.readonly_tools_stage_c() + [f"mcp__{adapter.mcp_server_name}__{t}" for t in
-                                                 ("get_accounts", "get_equity_positions", "get_portfolio", "get_equity_orders")]
+    reads = adapter.readonly_tools_stage_c() if exits_only else adapter.readonly_tools_trade()
+    allow += reads + [f"mcp__{adapter.mcp_server_name}__{t}" for t in
+                      ("get_accounts", "get_equity_positions", "get_portfolio", "get_equity_orders")]
     deny = list(DENY_BUILTINS)
     for scope in PROTECTED_SCOPES + ["reports/**", "state/updates/**"]:
         deny += [f"Edit({scope})", f"Write({scope})"]

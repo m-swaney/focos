@@ -106,8 +106,8 @@ def run(mode: str, date: str | None = None, heavy: bool | None = None, bump: boo
     if bump:
         sandbox_state.bump_run()
     try:
-        from .sandbox import paper
-        paper.update(date)
+        from .sandbox import paper, performance
+        performance.merge_into_scorecard(paper.update(date), performance.update(date))
     except Exception as e:  # noqa: BLE001
         settings.write_json(paths.SANDBOX / "scorecard.json", {"available": False, "error": str(e)})
     outputs["sandbox.json"] = sandbox_state.summary(cur if has_holdings else None)

@@ -20,6 +20,15 @@ STAGE_C_READ = [PREFIX + t for t in (
     "get_equity_quotes", "get_equity_news", "get_equity_fundamentals", "get_earnings_calendar",
     "get_equity_historicals", "search",
 )]
+# A trading pass has to find candidates, not just describe what is already held, so it gets the screening and
+# indicator reads the brief does not need. All read-only: `create_scan` and the scan-mutation tools write to
+# the broker account and the gate does not cover them, so they stay off.
+TRADE_READ = STAGE_C_READ + [PREFIX + t for t in (
+    "get_scans", "run_scan", "get_equity_technical_indicators", "get_equity_analyst_ratings",
+    "get_earnings_results", "get_equity_price_book", "get_equity_tradability", "get_watchlists",
+    "get_watchlist_items", "get_popular_watchlists", "get_realized_pnl", "get_pnl_trade_history",
+    "get_index_quotes",
+)]
 
 
 class RobinhoodAdapter:
@@ -40,6 +49,9 @@ class RobinhoodAdapter:
     def readonly_tools_stage_c(self) -> list[str]:
         return list(STAGE_C_READ)
 
+    def readonly_tools_trade(self) -> list[str]:
+        return list(TRADE_READ)
+
     def denied_tools(self) -> list[str]:
         return list(ALWAYS_DENY)
 
@@ -50,10 +62,17 @@ class RobinhoodAdapter:
         return f"{PLACE}|{REVIEW}"
 
     def sandbox_account_number(self, raw_snapshot: dict | None) -> str | None:
+        """The full account number the gate checks orders against.
+
+        Two shapes reach here. The daily holdings snapshot carries every account, and the agentic one is the
+        flagged member. A trading pass's own raw read is scoped to that account alone and states its number
+        at the top level -- and since it is the newest file in state/raw while a pass runs, missing this case
+        meant every order during a pass was refused as "not the Agentic account"."""
         for a in (raw_snapshot or {}).get("accounts", []):
             if a.get("agentic_allowed"):
                 return str(a.get("account_number"))
-        return None
+        scoped = (raw_snapshot or {}).get("account_number")
+        return str(scoped) if scoped else None
 
     def order_from_tool_input(self, tool_input: dict) -> Order:
         return Order.model_validate(tool_input or {})

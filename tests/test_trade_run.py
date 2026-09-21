@@ -99,6 +99,67 @@ def test_trade_prompts_render(initialized_home: Path):
     assert "Exits before entries" in body
 
 
+def test_trade_pass_gets_the_research_tools_the_brief_does_not(tmp_path):
+    """A pass that cannot screen cannot find anything, which is how the sandbox sat in cash: give it the
+    scanners and indicators, but nothing that writes to the broker account."""
+    a = RobinhoodAdapter()
+    gate_file = tmp_path / "settings.headless.json"
+    gate_file.write_text("{}", encoding="utf-8")
+    args = claude_cli.stage_trade_args(a, model="opus", budget_usd=6.0, mcp_config=Path("mcp.json"),
+                                       settings_file=gate_file, system_prompt=Path("sys.md"), trade_enabled=True)
+    allow = args[args.index("--allowedTools") + 1].split(",")
+    for tool in ("run_scan", "get_scans", "get_equity_technical_indicators", "get_equity_analyst_ratings",
+                 "get_earnings_results", "get_realized_pnl"):
+        assert PREFIX + tool in allow, tool
+    # scan creation writes to the broker account and the gate does not cover it
+    for tool in ("create_scan", "update_scan_filters", "add_to_watchlist"):
+        assert PREFIX + tool not in allow, tool
+    # the brief's Stage C stays as narrow as it was
+    assert PREFIX + "run_scan" not in a.readonly_tools_stage_c()
+
+
+def test_exits_only_pass_keeps_selling_but_loses_the_research_tools(tmp_path):
+    a = RobinhoodAdapter()
+    gate_file = tmp_path / "settings.headless.json"
+    gate_file.write_text("{}", encoding="utf-8")
+    args = claude_cli.stage_trade_args(a, model="opus", budget_usd=0.75, mcp_config=Path("mcp.json"),
+                                       settings_file=gate_file, system_prompt=Path("sys.md"), trade_enabled=True,
+                                       exits_only=True)
+    allow = args[args.index("--allowedTools") + 1].split(",")
+    # honouring a stop means selling, so the order tools stay; the gate is what refuses the buys
+    assert PLACE in allow and REVIEW in allow
+    assert PREFIX + "run_scan" not in allow and PREFIX + "get_equity_technical_indicators" not in allow
+    assert PREFIX + "get_equity_quotes" in allow
+
+
+def test_exits_pass_renders_its_own_prompt(initialized_home: Path):
+    from focos.brief import prompts
+
+    body = prompts.render_trade("2026-09-18", "trade-1", now=datetime(2026, 9, 18, 12, 45), exits_only=True)
+    assert "exits-only" in body and "{{TIME}}" not in body
+    assert "12:45" in body
+    # it must not go looking for anything
+    assert "run_scan" not in body and "shortlist" not in body
+
+
+def test_pass_marker_tells_the_gate_which_pass_is_running(initialized_home: Path):
+    from focos.sandbox import gate
+    from focos.sandbox import state as sb_state
+
+    now = datetime(2026, 9, 18, 12, 45, tzinfo=ET)
+    assert gate._pass_kind(now) == "trade"          # no marker: an ordinary pass
+    sb_state.start_pass("exits", "trade-2026-09-18-124500")
+    assert gate._pass_kind(datetime.now(ET)) == "exits"
+    sb_state.end_pass()
+    assert gate._pass_kind(datetime.now(ET)) == "trade"
+    # a marker left behind by a crashed pass must not mute tomorrow's buys
+    sb_state.start_pass("exits", "stale")
+    stale = settings.read_json(sb_state.pass_file(), {})
+    stale["started_at"] = "2026-09-18T12:45:00+00:00"
+    settings.write_json(sb_state.pass_file(), stale)
+    assert gate._pass_kind(datetime.now(ET)) == "trade"
+
+
 def test_trade_tools_are_refused_without_the_gate(tmp_path):
     """Granting place_equity_order without the PreToolUse hook would put real orders on an unchecked path."""
     a = RobinhoodAdapter()

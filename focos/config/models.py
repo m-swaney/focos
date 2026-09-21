@@ -77,6 +77,11 @@ class AgentBudget(_Lenient):
     weekly: float = 10.0
     monthly: float = 12.0
     keepalive: float = 0.25
+    # A trading pass screens, pulls indicators and reads news before it sizes anything, so it costs more than
+    # the brief's snapshot read. The exits pass does none of that and should stay cheap.
+    trade: float = 6.0
+    trade_snapshot: float = 1.0
+    trade_exits: float = 0.75
 
 
 class AgentSettings(_Lenient):
@@ -86,6 +91,7 @@ class AgentSettings(_Lenient):
     model_daily: str = "sonnet"
     model_heavy: str = "opus"
     model_keepalive: str = "haiku"
+    model_trade: str = "opus"
     debug_claude: bool = False          # also write --debug-file traces for Stage A/C runs
     budget_usd: AgentBudget = AgentBudget()
 
@@ -132,8 +138,12 @@ class TradeSchedule(_Lenient):
     """Intraday trading passes. The daily run lands after the close, where the sandbox rules reject every
     market order, so a live sandbox needs at least one pass inside regular hours to trade or honour a stop."""
     enabled: bool = True
-    times: list[str] = ["10:30", "15:00"]
+    times: list[str] = ["10:30", "12:45", "15:00"]
+    # Passes that manage open positions but may not open new ones. The gate enforces it; this only decides
+    # which jobs are launched with --exits-only.
+    exits_only: list[str] = ["12:45"]
     _t = field_validator("times", mode="before")(_coerce_times)
+    _e = field_validator("exits_only", mode="before")(_coerce_times)
 
 
 _TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -157,6 +167,17 @@ class ScheduleSettings(_Lenient):
                 raise ValueError(f"schedule.trade.times must be HH:MM (24h), got {t!r}")
         if len(set(self.trade.times)) != len(self.trade.times):
             raise ValueError("schedule.trade.times must not repeat a time")
+        for t in self.trade.exits_only:
+            if not _TIME.match(str(t)):
+                raise ValueError(f"schedule.trade.exits_only must be HH:MM (24h), got {t!r}")
+        if "exits_only" in self.trade.model_fields_set:
+            for t in self.trade.exits_only:
+                if t not in self.trade.times:
+                    raise ValueError(f"schedule.trade.exits_only {t!r} is not one of schedule.trade.times")
+        else:
+            # Only the default is presumptuous enough to name a time the household never asked for. Someone
+            # who sets their own times and says nothing about exits gets trading passes, not an error.
+            self.trade.exits_only = [t for t in self.trade.exits_only if t in self.trade.times]
         return self
 
 
@@ -571,6 +592,14 @@ class SandboxRules(_Lenient):
     cash_floor_pct: float = Field(default=0.05, ge=0, le=1)
     max_orders_per_run: int = 2
     max_orders_per_week: int = 4
+    # Account-level stop, measured against contributed capital rather than the peak: buys are refused below
+    # it, sells never are. 0 disables it.
+    max_drawdown_pct: float = Field(default=0.5, ge=0, le=1)
+    # Opt-in deposit check: refuse buys once equity exceeds this multiple of contributed capital. Null (the
+    # default) leaves a winning account free to keep buying.
+    equity_ceiling_multiple: float | None = Field(default=None, ge=1)
+    # Advisory only. The gate cannot enforce this: the order payload carries no instrument class, and
+    # resolving one would put a network call inside the hook, which fails orders closed on a timeout.
     instruments: list[Literal["stock", "etf"]] = ["stock", "etf"]
     min_price: float = 5.0
     blocklist_patterns: list[str] = []

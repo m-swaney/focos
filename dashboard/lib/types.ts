@@ -394,6 +394,7 @@ export interface Sandbox {
     recent_orders?: Omit<Order, "account">[];
   };
   proposals?: Proposal[];
+  drawdown_basis?: number | null;
   scorecard?: {
     available: boolean;
     asof?: string;
@@ -404,7 +405,33 @@ export interface Sandbox {
     avg_alpha_pct: number | null;
     total_pnl_usd: number | null;
     positions: ScorecardPosition[];
+    /** Real fills, matched FIFO. The paper keys above stay put for older readers. */
+    live?: LiveScore;
+    account?: SandboxAccountScore;
   };
+}
+
+export interface LiveScore {
+  available: boolean;
+  n_closed?: number;
+  n_open?: number;
+  hit_rate?: number | null;
+  beat_spy_rate?: number | null;
+  avg_return_pct?: number | null;
+  avg_alpha_pct?: number | null;
+  realized_pnl_usd?: number;
+  unrealized_pnl_usd?: number;
+  total_pnl_usd?: number;
+}
+
+export interface SandboxAccountScore {
+  equity: number | null;
+  capital_basis: number;
+  pnl_usd: number | null;
+  return_pct: number | null;
+  drawdown_pct: number;
+  halt_at_pct: number | null;
+  halted: boolean;
 }
 
 export interface Alert {
