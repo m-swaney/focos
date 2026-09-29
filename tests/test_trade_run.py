@@ -96,7 +96,7 @@ def test_trade_prompts_render(initialized_home: Path):
     body = prompts.render_trade("2026-09-18", "trade-1", now=datetime(2026, 9, 18, 15, 0))
     assert "15:00" in body and "{{TIME}}" not in body and "{{OWNER}}" not in body
     assert "live.json" in body and "trades_placed" in body
-    assert "Exits before entries" in body
+    assert "The exit plan" in body and "{{EXITS}}" not in body
 
 
 def test_trade_pass_gets_the_research_tools_the_brief_does_not(tmp_path):

@@ -12,12 +12,13 @@ PREFIX = f"mcp__{SERVER}__"
 
 PLACE = PREFIX + "place_equity_order"
 REVIEW = PREFIX + "review_equity_order"
+CANCEL = PREFIX + "cancel_equity_order"
 ALWAYS_DENY = [PREFIX + t for t in (
     "place_option_order", "place_crypto_order", "review_option_order", "preview_crypto_order",
-    "cancel_equity_order", "cancel_option_order", "cancel_crypto_order", "exercise_option", "cancel_option_exercise",
+    "cancel_option_order", "cancel_crypto_order", "exercise_option", "cancel_option_exercise",
 )]
 STAGE_C_READ = [PREFIX + t for t in (
-    "get_equity_quotes", "get_equity_news", "get_equity_fundamentals", "get_earnings_calendar",
+    "get_equity_quotes", "get_equity_fundamentals", "get_earnings_calendar",
     "get_equity_historicals", "search",
 )]
 # A trading pass has to find candidates, not just describe what is already held, so it gets the screening and
@@ -27,7 +28,7 @@ TRADE_READ = STAGE_C_READ + [PREFIX + t for t in (
     "get_scans", "run_scan", "get_equity_technical_indicators", "get_equity_analyst_ratings",
     "get_earnings_results", "get_equity_price_book", "get_equity_tradability", "get_watchlists",
     "get_watchlist_items", "get_popular_watchlists", "get_realized_pnl", "get_pnl_trade_history",
-    "get_index_quotes",
+    "get_index_quotes", "get_sec_filing_index", "get_sec_filing", "get_equity_orders",
 )]
 
 
@@ -40,8 +41,8 @@ class RobinhoodAdapter:
     def mcp_config(self) -> dict:
         return {"mcpServers": {SERVER: {"type": "http", "url": URL}}}
 
-    def guarded_tools(self) -> dict[str, Literal["place", "review"]]:
-        return {PLACE: "place", REVIEW: "review"}
+    def guarded_tools(self) -> dict[str, Literal["place", "review", "cancel"]]:
+        return {PLACE: "place", REVIEW: "review", CANCEL: "cancel"}
 
     def readonly_tools_stage_a(self) -> list[str]:
         return [PREFIX + "get_*", PREFIX + "search"]
@@ -56,10 +57,10 @@ class RobinhoodAdapter:
         return list(ALWAYS_DENY)
 
     def trade_tools(self) -> list[str]:
-        return [REVIEW, PLACE]
+        return [REVIEW, PLACE, CANCEL]
 
     def hook_matcher(self) -> str:
-        return f"{PLACE}|{REVIEW}"
+        return f"{PLACE}|{REVIEW}|{CANCEL}"
 
     def sandbox_account_number(self, raw_snapshot: dict | None) -> str | None:
         """The full account number the gate checks orders against.

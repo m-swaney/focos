@@ -17,10 +17,12 @@ Write `reports/weekly/{{WEEK}}.md`. Use the standard sections, then add:
 11. `## Tax` lots crossing to long-term soon, harvestable losses, wash-sale cautions for names bought
     in the last 30 days.
 12. `## Opportunities` at most five ideas with evidence, each tagged research / rebalance / sandbox.
-    You may use `get_equity_fundamentals`, `get_equity_news`, and `get_equity_quotes` to check facts.
+    You may use `get_equity_fundamentals`, `get_equity_quotes`, and `WebSearch` (news) to check facts.
 13. `## Sandbox review` score the week against SPY using scorecard data, review each open proposal
     against its thesis, and propose rule changes for {{OWNER}} to consider (you cannot change rules).
-14. `## Decisions for {{OWNER}}` the three most valuable decisions to make this week.
+14. `## Decisions for {{OWNER}}` the three most valuable decisions to make this week. For any decision
+    open more than 14 days, recommend a default and say that focos will treat it as `standing` (and stop
+    raising it) unless {{OWNER}} says otherwise; emit that `decision` update.
 
 Keep the weekly under 1,200 words. Handle every note in `inbox.json`; write structured updates and note
 replies to `state/updates/{{RUN_ID}}.json` when you have any. Append decisions to `state/decisions.jsonl`

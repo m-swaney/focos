@@ -3,19 +3,83 @@
   "title": "Update",
   "description": "One structured change the model asks the harness to apply. Only these targets and fields exist.",
   "type": "object",
-  "required": ["target"],
+  "required": [
+    "target"
+  ],
   "properties": {
-    "target": {"type": "string", "enum": ["goal", "tax_agenda", "profile", "spending", "decision"]},
-    "op": {"type": "string", "enum": ["set", "add", "append", "resolve"]},
-    "id": {"type": "string", "description": "goal id, tax_agenda item id, or decision id"},
-    "text": {"type": "string", "description": "tax_agenda add: the new item; profile append: the note"},
-    "path": {"type": "string", "enum": ["income.notes", "cash_policy.notes", "risk.notes", "family.notes"]},
+    "target": {
+      "type": "string",
+      "enum": [
+        "goal",
+        "tax_agenda",
+        "profile",
+        "spending",
+        "decision",
+        "merchant_rule",
+        "asset"
+      ]
+    },
+    "op": {
+      "type": "string",
+      "enum": [
+        "set",
+        "add",
+        "append",
+        "resolve"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "description": "goal id, tax_agenda item id, decision id, or asset key (asset: short snake_case key)"
+    },
+    "text": {
+      "type": "string",
+      "description": "tax_agenda add: the new item; profile append: the note"
+    },
+    "path": {
+      "type": "string",
+      "enum": [
+        "income.notes",
+        "cash_policy.notes",
+        "risk.notes",
+        "family.notes"
+      ]
+    },
     "set": {
       "type": "object",
       "description": "goal: status active|done|paused, completed_on, target_amount, deadline, notes, funded_amount. tax_agenda: status open|done|dropped, done_on, notes. spending: monthly_core_expenses, monthly_discretionary. decision: status acted|retired|standing, note.",
       "additionalProperties": true
     },
-    "reason": {"type": "string"},
-    "source_note_id": {"type": ["string", "null"], "description": "the inbox note this update answers"}
+    "reason": {
+      "type": "string"
+    },
+    "source_note_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "the inbox note this update answers"
+    },
+    "name": {
+      "type": "string",
+      "description": "asset add: display name, e.g. 2019 pickup truck"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "real_estate",
+        "vehicle",
+        "other"
+      ],
+      "description": "asset: what it is"
+    },
+    "value": {
+      "type": "number",
+      "description": "asset: current value in dollars, as the owner stated it"
+    },
+    "entity": {
+      "type": "string",
+      "description": "asset: owning entity key (default personal)"
+    }
   }
 }

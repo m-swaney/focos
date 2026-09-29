@@ -181,3 +181,48 @@ def update(repo: str = DEFAULT_REPO, log=print, force: bool = False) -> dict:
     _rewire(py, home, log)
     _prune(base, {new_app, app}, log)
     return {"mode": "release", "current": cur, "available": rel["tag"], "updated": True, "app": str(new_app)}
+
+
+def run_in_flight(max_hours: float = 3.0) -> str | None:
+    """The mode of a run that started recently and has not finished, or None. Swapping app dirs under a live run
+    would point its hooks at a directory that is being rewired."""
+    from datetime import datetime, timedelta, timezone
+
+    from .run import status
+
+    now = datetime.now(timezone.utc)
+    for mode, entry in (status.get() or {}).items():
+        if not isinstance(entry, dict) or entry.get("finished") or not entry.get("started"):
+            continue
+        try:
+            started = datetime.fromisoformat(str(entry["started"]))
+        except ValueError:
+            continue
+        if now - started < timedelta(hours=max_hours):
+            return mode
+    return None
+
+
+def auto_update(repo: str = DEFAULT_REPO, log=print) -> dict:
+    """The nightly job: install the newest release if there is one, and say so. Never on a dev checkout (that is
+    the developer's tree to manage) and never while a run is in flight."""
+    from . import notify
+
+    if is_dev_checkout():
+        return {"skipped": "dev checkout"}
+    busy = run_in_flight()
+    if busy:
+        return {"skipped": f"a {busy} run is in flight"}
+    cur = installed_version()
+    try:
+        info = check(repo)
+        if not info.get("newer"):
+            return {"current": cur, "available": info.get("available"), "updated": False, "error": info.get("error")}
+        out = update(repo, log=log)
+    except Exception as e:  # noqa: BLE001
+        notify.send("focos: update failed", f"Could not update from {cur}: {str(e)[:200]}", "warn", key="update_failed")
+        return {"current": cur, "updated": False, "error": str(e)[:300]}
+    if out.get("updated"):
+        notify.send("focos updated", f"Now on {out.get('available')} (was {cur}).", "info", key=f"updated:{out.get('available')}")
+    return out
+

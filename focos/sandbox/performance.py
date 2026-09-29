@@ -21,6 +21,67 @@ def live_file():
     return paths.SANDBOX / "live_positions.json"
 
 
+def fills_file():
+    """Broker-reported fills, appended by every trading pass's live read. When present this is the scorecard's
+    source of truth: an accepted order is an intention, a fill is what happened (a GFD limit can expire unfilled,
+    a resting stop fills on a day no pass ran)."""
+    return paths.SANDBOX / "fills.jsonl"
+
+
+def _fill_row(o: dict) -> dict | None:
+    if not isinstance(o, dict):
+        return None
+    state = str(o.get("state") or "filled").lower()
+    qty = _f(o.get("cumulative_quantity")) or _f(o.get("filled_quantity")) or _f(o.get("quantity"))
+    px = _f(o.get("average_price")) or _f(o.get("executed_price")) or _f(o.get("price"))
+    side = str(o.get("side", "")).lower()
+    symbol = str(o.get("symbol", "")).upper()
+    oid = str(o.get("id") or o.get("order_id") or "")
+    if state not in ("filled", "partially_filled") or not qty or not px or side not in ("buy", "sell") or not symbol:
+        return None
+    when = str(o.get("last_transaction_at") or o.get("updated_at") or o.get("filled_at") or o.get("created_at") or "")
+    return {"id": oid or f"{symbol}-{side}-{when}-{qty}", "date": when[:10], "ts": when, "symbol": symbol, "side": side,
+            "quantity": qty, "price": px, "type": o.get("type"), "ref_id": o.get("ref_id")}
+
+
+def record_fills(orders: list[dict]) -> int:
+    """Append fills the broker reported that are not on file yet. Returns how many were new."""
+    import json
+
+    path = fills_file()
+    have = set()
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                have.add(json.loads(line).get("id"))
+            except ValueError:
+                continue
+    new = [r for r in (_fill_row(o) for o in orders or []) if r and r["id"] not in have]
+    if new:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            for r in sorted(new, key=lambda r: r["ts"]):
+                f.write(json.dumps(r) + "\n")
+    return len(new)
+
+
+def _broker_fills(snaps: list[dict]) -> list[dict]:
+    import json
+
+    path = fills_file()
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        spy = _quote(next((s for s in snaps if s.get("date", "") >= r["date"]), {}) or {}, "SPY")
+        out.append({**r, "spy": spy})
+    return sorted(out, key=lambda f: (f["date"], f.get("ts") or ""))
+
+
 def _f(v) -> float | None:
     try:
         return float(str(v).replace(",", "").replace("$", ""))
@@ -60,7 +121,11 @@ def _response_price(resp) -> float | None:
 
 
 def _fills(snaps: list[dict]) -> list[dict]:
-    """Every order that the broker accepted, oldest first, priced as well as we can price it."""
+    """Broker fills when the trading passes have recorded them; otherwise every order the broker accepted, oldest
+    first, priced as well as we can price it. Resting stop orders are not fills and never count here."""
+    broker = _broker_fills(snaps)
+    if broker:
+        return broker
     path = journal.orders_file()
     if not path.exists():
         return []
@@ -79,6 +144,8 @@ def _fills(snaps: list[dict]) -> list[dict]:
         side = str(order.get("side", "")).lower()
         if not symbol or side not in ("buy", "sell"):
             continue
+        if str(order.get("type", "")).lower() in ("stop_market", "stop_limit"):
+            continue   # a protective stop resting at the broker, not a trade
         day = str(entry.get("ts", ""))[:10]
         px = _response_price(entry.get("response")) or _f(order.get("limit_price"))
         if px is None:

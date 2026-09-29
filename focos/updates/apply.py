@@ -199,6 +199,15 @@ def _merchant_rule(u: MerchantRuleUpdate, actor: str, date: str) -> tuple[dict, 
     return {"category": old["category"] if old else None, "source": old["source"] if old else None}, {"category": u.category, "transactions": n}
 
 
+def _asset(u, actor: str, date: str) -> tuple[dict | None, dict]:
+    from ..ledger import properties
+
+    try:
+        return properties.upsert_manual_asset(u.id, u.name, u.value, kind=u.kind, entity=u.entity, asof=date)
+    except ValueError as e:
+        raise UpdateError(str(e)) from e
+
+
 def record(*, target: str, op: str, id: str | None, before: Any, after: Any, reason: str, actor: str, run: str, date: str,
            source_note_id: str | None = None, ok: bool = True, error: str | None = None) -> dict:
     """Log a change that was applied elsewhere (the categorizer writes rules straight into the ledger)."""
@@ -240,6 +249,9 @@ def apply(updates: list[dict] | None, *, actor: str, run: str, date: str | None 
                 before, after = _spending(upd, actor, date)
             elif isinstance(upd, DecisionUpdate):
                 before, after = _decision(upd, actor, date, run)
+            elif getattr(upd, "target", None) == "asset":
+                before, after = _asset(upd, actor, date)
+                rec["id"] = after.get("key")
             else:
                 before, after = _merchant_rule(upd, actor, date)
             rec.update(before=_plain(before), after=_plain(after), ok=True)

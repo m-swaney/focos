@@ -21,7 +21,7 @@ def settings_document(adapter: BrokerAdapter, python: str | None = None) -> dict
     home = paths.HOME.as_posix()
     hook = lambda module, timeout: {"type": "command", "command": f'"{py}" -m {module} --home "{home}"', "timeout": timeout}  # noqa: E731
     return {
-        "permissions": {"deny": adapter.denied_tools() + ["Bash", "PowerShell", "WebFetch", "WebSearch"]},
+        "permissions": {"deny": adapter.denied_tools() + ["Bash", "PowerShell", "WebFetch"]},
         "hooks": {
             "PreToolUse": [{"matcher": adapter.hook_matcher(), "hooks": [hook("focos.sandbox.gate", 60)]}],
             "PostToolUse": [{"matcher": next(k for k, v in adapter.guarded_tools().items() if v == "place"),

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from .. import paths, settings
 
 JOB_NAMES = {"daily": "focos-daily", "weekly": "focos-weekly", "monthly": "focos-monthly", "keepalive": "focos-keepalive",
-             "service": "focos-dashboard"}
+             "update": "focos-update", "service": "focos-dashboard"}
 TRADE_JOB_PREFIX = "focos-trade"
 
 
@@ -122,6 +122,13 @@ def run_jobs(cfg: dict | None = None) -> list[Job]:
                         schedule=Schedule(kind="daily", time=str(k.get("time") or "09:00")),
                         argv=_base_argv(True) + ["holdings", "keepalive"], cwd=str(paths.HOME), time_limit_minutes=10,
                         log=str(paths.LOGS / "scheduler-keepalive.log")))
+    u = cfg.get("updates") or {}
+    if u.get("auto", True):
+        # Every day, well away from market hours and the run schedule: stay on the newest release unattended.
+        jobs.append(Job(key="update", name=JOB_NAMES["update"], description="focos nightly update",
+                        schedule=Schedule(kind="daily", time=str(u.get("time") or "05:15")),
+                        argv=_base_argv(True) + ["update", "--auto"], cwd=str(paths.HOME), time_limit_minutes=30,
+                        log=str(paths.LOGS / "scheduler-update.log")))
     return jobs
 
 

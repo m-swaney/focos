@@ -75,7 +75,9 @@ focos auth robinhood            # connect (or reconnect) Robinhood in agent mode
 focos ai test                   # check the AI key
 focos schedule status           # what is scheduled
 focos doctor                    # health checks with fixes
-focos update                    # install the newest release
+focos notify phone              # push alerts to your phone (free ntfy app); `focos notify test` to check
+focos asset add "2019 pickup truck" --value 21000   # something you own that no feed carries
+focos update                    # install the newest release (the nightly job does this for you)
 ```
 
 The dashboard has the same controls: a note box and reply buttons on the home page, Done buttons on the Plan
@@ -103,6 +105,12 @@ is logged to `state/changes.jsonl`, shown under "Recent updates", and reported b
   or decision updates; questions get answered in the brief.
 - **Mercury**: business accounts that do not sync through SimpleFIN can be read straight from Mercury with a
   read-only API token (Setup > Banks, or `focos ledger mercury --token ...`).
+- **Notifications**: focos tells you when something needs you instead of leaving it in a brief: a stop exit
+  that did not go through, a failed run, a login that lapsed, a bank feed that needs you to sign in, every order
+  the sandbox places. Desktop toasts are on by default; `focos notify phone` adds phone push through ntfy.
+  Standing issues are repeated at most weekly, and the dashboard shows how long each has been open.
+- **Stays current by itself**: a nightly job (`updates.auto`, 05:15 by default) installs the newest release,
+  skips if a run is in flight, and notifies you when it updated.
 - **Config schema**: `focos config validate` checks every file; `focos config schema` exports JSON Schema.
 
 ## Developing
@@ -119,9 +127,15 @@ real account names, institutions, and amounts out of tests and fixtures.
 
 ## Safety model
 
-- The pipeline is read-only. In agent mode the only tool that can move money is the sandbox order tool, which
-  is gated by `focos.sandbox.gate` (account, size, weight, cash floor, frequency, proposal, approval) and off
-  unless you enable it.
+- The pipeline is read-only. In agent mode the only tools that can move money are the sandbox order tools,
+  gated by `focos.sandbox.gate` and off unless you enable it. Buys must clear every limit (account, size,
+  weight, cash floor, frequency, drawdown halt, a written proposal with a stop). Sells of a held position only
+  need the right account, a real quantity, and a fresh order key, so a stop can never be blocked by an entry
+  rule.
+- Stops are enforced in code. Each trading pass compares every position with the stop in its proposal, hands
+  the agent the exact exit order for any breach, and fails loudly (and notifies you) if that order did not
+  reach the broker. Every position also gets a good-till-cancelled stop order resting at the broker, so it is
+  protected between passes and overnight.
 - The AI never sees account numbers or raw transactions; it gets derived figures and the profile you confirmed.
 - Every number in a brief must come from `state/derived/latest`; the prompts forbid computing new figures.
 

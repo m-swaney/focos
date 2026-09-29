@@ -79,6 +79,15 @@ def run(date: str | None = None) -> dict:
 
 def _record(rec: dict) -> dict:
     settings.write_json(paths.KEEPALIVE, rec)
+    if rec.get("auth_error"):
+        # The one failure only a person can fix, and every trading pass after it fails until they do.
+        try:
+            from .. import notify
+
+            notify.send("focos: Robinhood login needed", f"The morning keep-alive could not authenticate. {tokens.AUTH_FIX}",
+                        "critical", key=f"robinhood_auth:{rec.get('date')}")
+        except Exception:  # noqa: BLE001
+            pass
     paths.LOGS.mkdir(parents=True, exist_ok=True)
     with (paths.LOGS / "keepalive.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec, default=str) + "\n")

@@ -438,11 +438,24 @@ export interface Alert {
   severity: Severity;
   code: string;
   text: string;
+  data?: Record<string, unknown>;
+}
+
+/** A warn/critical alert tracked across runs (focos/notify.py sync_issues). */
+export interface Issue {
+  code: string;
+  text: string;
+  severity: Severity;
+  first_seen: string;
+  last_seen: string;
+  days_open: number;
+  notified_on?: string | null;
 }
 
 export interface Alerts {
   date: string;
   alerts: Alert[];
+  issues?: Record<string, Issue>;
   tokens?: {
     available: boolean;
     robinhood_access_expires?: string | null;

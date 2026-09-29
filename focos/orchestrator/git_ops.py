@@ -69,6 +69,10 @@ def commit_run(home: Path, message: str, subpaths: tuple[str, ...] = DEFAULT_PAT
     if repo is None:
         return None
     ignore = IgnoreFilterManager.from_repo(repo)
+    # The layout marker `focos migrate` writes. Outside every configured path, it sat modified and uncommitted
+    # after each migration, so the data dir never looked clean.
+    if "VERSION" not in subpaths:
+        subpaths = tuple(subpaths) + ("VERSION",)
     files = _candidate_files(home, subpaths, ignore)
     index = repo.open_index()
     prefixes = tuple(s.rstrip("/") + "/" for s in subpaths)

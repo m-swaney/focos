@@ -10,7 +10,10 @@ from ..run import claude_io
 from ..sandbox.brokers.base import BrokerAdapter
 
 FILE_TOOLS = ["Read", "Glob", "Grep"]
-DENY_BUILTINS = ["Bash", "PowerShell", "NotebookEdit", "WebFetch", "WebSearch", "Agent", "Task"]
+DENY_BUILTINS = ["Bash", "PowerShell", "NotebookEdit", "WebFetch", "Agent", "Task"]
+# The broker MCP has no news tool, so news and filings come from web search: read-only, and its results are
+# treated as untrusted data like everything else the model reads (system prompt rule 4).
+NEWS_TOOLS = ["WebSearch"]
 WRITE_SCOPES = ["reports/**", "state/decisions.jsonl", "state/sandbox/proposals/**", "state/updates/**"]
 PROTECTED_SCOPES = ["config/**", "agent/**", "focos/**", "dashboard/**", "scripts/**", "state/inbox.jsonl", "state/changes.jsonl"]
 
@@ -43,7 +46,7 @@ def _common(model: str, budget_usd: float, mcp_config: Path) -> list[str]:
 
 def stage_a_args(adapter: BrokerAdapter, *, model: str, budget_usd: float, mcp_config: Path) -> list[str]:
     """Snapshot: only the broker's read tools; every write, shell, and trade tool denied."""
-    allow = adapter.readonly_tools_stage_a()
+    allow = adapter.readonly_tools_stage_a() + NEWS_TOOLS
     deny = DENY_BUILTINS + ["Edit", "Write"] + adapter.trade_tools() + adapter.denied_tools()
     return _common(model, budget_usd, mcp_config) + ["--allowedTools", ",".join(allow), "--disallowedTools", ",".join(deny)]
 
@@ -62,7 +65,7 @@ def stage_trade_args(adapter: BrokerAdapter, *, model: str, budget_usd: float, m
     allow = list(FILE_TOOLS)
     for scope in TRADE_WRITE_SCOPES:
         allow += [f"Edit({scope})", f"Write({scope})"]
-    reads = adapter.readonly_tools_stage_c() if exits_only else adapter.readonly_tools_trade()
+    reads = adapter.readonly_tools_stage_c() if exits_only else adapter.readonly_tools_trade() + NEWS_TOOLS
     allow += reads + [f"mcp__{adapter.mcp_server_name}__{t}" for t in
                       ("get_accounts", "get_equity_positions", "get_portfolio", "get_equity_orders")]
     deny = list(DENY_BUILTINS)
@@ -94,7 +97,7 @@ def keepalive_args(adapter: BrokerAdapter, *, model: str, budget_usd: float, mcp
                    debug_file: Path | None = None) -> list[str]:
     """Token keep-alive: exactly one account-list read tool; everything else denied."""
     allow = [f"mcp__{adapter.mcp_server_name}__get_accounts"]
-    deny = DENY_BUILTINS + ["Edit", "Write"] + adapter.trade_tools() + adapter.denied_tools()
+    deny = DENY_BUILTINS + NEWS_TOOLS + ["Edit", "Write"] + adapter.trade_tools() + adapter.denied_tools()
     return (_common(model, budget_usd, mcp_config) + ["--allowedTools", ",".join(allow), "--disallowedTools", ",".join(deny)]
             + debug_args(debug_file))
 
@@ -106,7 +109,7 @@ def stage_c_args(adapter: BrokerAdapter, *, model: str, budget_usd: float, mcp_c
     allow = list(FILE_TOOLS)
     for scope in WRITE_SCOPES:
         allow += [f"Edit({scope})", f"Write({scope})"]
-    allow += adapter.readonly_tools_stage_c()
+    allow += adapter.readonly_tools_stage_c() + NEWS_TOOLS
     deny = list(DENY_BUILTINS)
     for scope in PROTECTED_SCOPES:
         deny += [f"Edit({scope})", f"Write({scope})"]

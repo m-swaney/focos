@@ -96,17 +96,32 @@ def run(mode: str, date: str | None = None, heavy: bool | None = None, bump: boo
     fcfg = settings.focos()
     token_alerts = tokens_mod.alerts() if ((fcfg.get("ai") or {}).get("mode") == "agent"
                                           or (fcfg.get("holdings") or {}).get("source") == "robinhood_mcp") else []
+    from .run import attention
+    all_alerts = (alerts_mod.build(cur, outputs["portfolio.json"] if has_holdings else {}, settings.profile_v2(),
+                                   outputs["catalysts.json"], history, outputs.get("tax_lots.json") if has_holdings else None,
+                                   ledger_ok=ledger["ok"], consolidated=outputs["consolidated.json"]) + token_alerts
+                  + attention.build(cur if has_holdings else None, outputs["consolidated.json"], date))
+    try:
+        from . import notify
+        # Only a scheduled run pushes; a dashboard rebuild (bump=False) just refreshes the ages.
+        issues = notify.sync_issues(all_alerts, date, push=bump)
+    except Exception as e:  # noqa: BLE001
+        issues = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     outputs["alerts.json"] = {
         "date": date,
-        "alerts": alerts_mod.build(cur, outputs["portfolio.json"] if has_holdings else {}, settings.profile_v2(),
-                                   outputs["catalysts.json"], history, outputs.get("tax_lots.json") if has_holdings else None,
-                                   ledger_ok=ledger["ok"], consolidated=outputs["consolidated.json"]) + token_alerts,
+        "alerts": all_alerts,
+        "issues": issues,
         "tokens": tokens_mod.expiries(),
     }
     if bump:
         sandbox_state.bump_run()
     try:
         from .sandbox import paper, performance
+        try:
+            agentic = rh.agentic_account(cur) if has_holdings else None
+            performance.record_fills((agentic or {}).get("recent_orders") or [])
+        except Exception:  # noqa: BLE001
+            pass
         performance.merge_into_scorecard(paper.update(date), performance.update(date))
     except Exception as e:  # noqa: BLE001
         settings.write_json(paths.SANDBOX / "scorecard.json", {"available": False, "error": str(e)})

@@ -9,12 +9,14 @@ class Order(BaseModel):
     """What sandbox.rules.validate consumes (kept as a plain-dict contract via model_dump)."""
     model_config = ConfigDict(extra="allow")
     account_number: str | None = None
-    symbol: str
-    side: str
+    symbol: str = ""               # empty on a cancel, which names an order_id instead
+    side: str = ""
     type: str | None = None
     quantity: str | float | None = None
     dollar_amount: str | float | None = None
     limit_price: str | float | None = None
+    stop_price: str | float | None = None
+    order_id: str | None = None
     time_in_force: str | None = None
     market_hours: str | None = None
     ref_id: str | None = None
@@ -28,7 +30,7 @@ class BrokerAdapter(Protocol):
     market_tz: str
 
     def mcp_config(self) -> dict: ...
-    def guarded_tools(self) -> dict[str, Literal["place", "review"]]: ...
+    def guarded_tools(self) -> dict[str, Literal["place", "review", "cancel"]]: ...
     def readonly_tools_stage_a(self) -> list[str]: ...
     def readonly_tools_stage_c(self) -> list[str]: ...
     def readonly_tools_trade(self) -> list[str]: ...

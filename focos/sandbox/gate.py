@@ -99,7 +99,8 @@ def build_context(tool: str, order: dict, now: datetime | None = None) -> dict:
                                    "sellable": p.get("sellable") or p.get("quantity") or 0.0}
                      for p in (live_view.get("positions") or [])}
         prices = {**prices, **(live_view.get("quotes") or {})}
-    recent = [e for e in _recent_gate_entries(7) if e.get("tool") == "place" and e.get("ok")]
+    # Frequency caps are entry controls, so only buys count toward them (rules.validate applies them to buys).
+    recent = [e for e in _recent_gate_entries(7) if e.get("tool") == "place" and e.get("ok") and e.get("side") == "buy"]
     run_window = now - timedelta(minutes=90)
     this_run = [e for e in recent if datetime.fromisoformat(e["ts"]) >= run_window]
     ref_id = order.get("ref_id")
@@ -130,7 +131,41 @@ def build_context(tool: str, order: dict, now: datetime | None = None) -> dict:
         "live": {"used": live_fresh, "age_minutes": live.age_minutes(live_view, now)},
         "proposal": proposal,
         "approved": bool(ref_id) and (paths.APPROVALS / f"{ref_id}.approved").exists(),
+        "used_ref_ids": used_ref_ids(),
     }
+
+
+def used_ref_ids() -> dict[str, str]:
+    """ref_ids of orders the broker already accepted. The broker de-duplicates on ref_id, so a new order that
+    reuses one is silently answered with the old order -- the gate refuses it up front instead."""
+    from . import journal
+
+    out: dict[str, str] = {}
+    path = journal.orders_file()
+    if not path.exists():
+        return out
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        o = e.get("order") or {}
+        if e.get("ok") and o.get("ref_id"):
+            out[str(o["ref_id"])] = f"{o.get('side')} {o.get('symbol')} on {str(e.get('ts', ''))[:10]}"
+    return out
+
+
+def refusal_message(verdict: rules_mod.Verdict) -> str:
+    """What the model reads when an order is refused. The wording decides what happens next: 0.3.6 said "do not
+    retry" to everything, so a stop exit refused over a paperwork field was abandoned for days."""
+    head = "SANDBOX GATE BLOCKED this order:\n- " + "\n- ".join(verdict.reasons) + "\n"
+    if verdict.exit or verdict.correctable:
+        return head + ("Correct exactly what the reasons name (a field, a fresh ref_id, the account number, the "
+                       "quantity) and send it again in this pass. Do not change what the trade is. "
+                       + ("This is an exit from a held position: it must go through, so fix it now. "
+                          if verdict.exit else "")
+                       + "If the same reason comes back after one correction, log it as kind 'blocked' and stop.\n")
+    return head + "These are sandbox limits. Do not retry or reshape the order to get past them; log the refusal.\n"
 
 
 def _log(entry: dict) -> None:
@@ -162,10 +197,10 @@ def main() -> int:
     redacted["account_last4"] = str(order.get("account_number", ""))[-4:]
     _log({"ts": datetime.now(settings.tz()).isoformat(timespec="seconds"), "tool": tool, "ok": verdict.ok,
           "reasons": verdict.reasons, "symbol": verdict.symbol, "side": verdict.side,
-          "notional": verdict.notional, "order": redacted, "session_id": payload.get("session_id")})
+          "notional": verdict.notional, "exit": verdict.exit, "order": redacted,
+          "session_id": payload.get("session_id")})
     if not verdict.ok:
-        sys.stderr.write("SANDBOX GATE BLOCKED this order:\n- " + "\n- ".join(verdict.reasons) +
-                         "\nDo not retry or work around this. Record the refusal in the brief.\n")
+        sys.stderr.write(refusal_message(verdict))
         return 2
     return 0
 

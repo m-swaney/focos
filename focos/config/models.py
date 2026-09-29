@@ -216,6 +216,25 @@ class DashboardSettings(_Lenient):
     host: str = "127.0.0.1"       # 0.0.0.0 (or a Tailscale/LAN address) to reach the dashboard from other devices
 
 
+class NotifySettings(_Lenient):
+    """Push what needs the household instead of leaving it in a brief. Toasts stay on this machine; phone push
+    (ntfy) is enabled by `focos notify phone`, which keeps the topic in .env as FOCOS_NTFY_TOPIC."""
+    enabled: bool = True
+    toast: bool = True
+    ntfy_server: str = "https://ntfy.sh"
+    click_url: str | None = None           # where tapping a phone notification goes (e.g. the tailnet dashboard)
+    min_severity: Literal["info", "warn", "critical"] = "info"
+    trades: bool = True                    # a push for every order the sandbox places
+
+
+class UpdateSettings(_Lenient):
+    """Stay on the newest release without anyone running `focos update`. The job runs outside market hours and
+    outside the run schedule, and refuses to swap versions while a run is in flight."""
+    auto: bool = True
+    time: str = "05:15"
+    _t = field_validator("time", mode="before")(_coerce_time)
+
+
 class FocosSettings(_Lenient):
     version: int = 1
     home_label: str = "My household"
@@ -227,6 +246,8 @@ class FocosSettings(_Lenient):
     git: GitSettings = GitSettings()
     dashboard: DashboardSettings = DashboardSettings()
     intraday: IntradaySettings = IntradaySettings()
+    notify: NotifySettings = NotifySettings()
+    updates: UpdateSettings = UpdateSettings()
     setup_completed_at: str | None = None
 
 
@@ -630,6 +651,7 @@ class Analytics(_Lenient):
 class Property(_Lenient):
     key: str
     name: str
+    kind: Literal["real_estate", "vehicle", "other"] = "real_estate"
     address: str | None = None
     entity: str = HOUSEHOLD
     source: Literal["zillow", "manual"] = "manual"

@@ -17,7 +17,7 @@ def test_stage_a_only_read_tools():
     assert _flag(args, "--max-budget-usd") == "3.0" and _flag(args, "--output-format") == "json"
     allow = _flag(args, "--allowedTools").split(",")
     deny = _flag(args, "--disallowedTools").split(",")
-    assert allow == [PREFIX + "get_*", PREFIX + "search"]
+    assert allow == [PREFIX + "get_*", PREFIX + "search", "WebSearch"]   # news: the broker has no news tool
     for t in ("Bash", "PowerShell", "Edit", "Write", "WebFetch", PLACE, REVIEW, PREFIX + "place_option_order"):
         assert t in deny
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from focos import paths, settings
 from focos.sandbox import gate, journal
 from focos.sandbox import state as sb_state
-from focos.sandbox.brokers.robinhood import PLACE, REVIEW
+from focos.sandbox.brokers.robinhood import CANCEL, PLACE, REVIEW
 
 
 def _run(module, payload: dict, monkeypatch) -> int:
@@ -49,7 +49,7 @@ def test_allowed_tools_extra_from_adapter(initialized_home: Path):
     assert sb_state.allowed_tools_extra() == []
     sb_state.set_mode("live")
     sb_state.save_mode({**sb_state.load_mode(), "run_count": 99})
-    assert sb_state.allowed_tools_extra() == [REVIEW, PLACE]
+    assert sb_state.allowed_tools_extra() == [REVIEW, PLACE, CANCEL]
 
 
 def test_agentic_number_resolves_from_a_trading_pass_raw_read(initialized_home: Path):

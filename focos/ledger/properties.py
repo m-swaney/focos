@@ -30,6 +30,11 @@ def save(props: list[dict]) -> None:
     settings.reset()
 
 
+# What a properties.yml entry is, and the ledger account type it becomes. Real estate was the only kind until
+# 0.3.7; a paid-off truck with no feed and no Zillow page is still part of net worth.
+KIND_TO_TYPE = {"real_estate": "property", "vehicle": "vehicle", "other": "other"}
+
+
 def account_key(p: dict) -> str:
     return f"prop_{p['key']}"
 
@@ -47,7 +52,8 @@ def ensure_accounts(provider: LedgerProvider, props: list[dict]) -> list[dict]:
         if p.get("ledger_account_id"):
             continue
         entity = p.get("entity") or HOUSEHOLD
-        spec = ManualAccountSpec(key=account_key(p), name=p["name"], entity=entity, account_type="property",
+        spec = ManualAccountSpec(key=account_key(p), name=p["name"], entity=entity,
+                                 account_type=KIND_TO_TYPE.get(str(p.get("kind") or "real_estate"), "property"),
                                  classification="asset", balance=current_value(p), notes=p.get("address"))
         acct = provider.upsert_manual_account(spec)
         p["ledger_account_id"] = acct.id
@@ -108,3 +114,42 @@ def refresh(asof: str | None = None, push: bool = True, force: bool = False, pro
            "total_value": sum(r.get("value") or 0 for r in results if not r.get("error"))}
     settings.write_json(paths.LATEST / "properties.json", out)
     return out
+
+
+def upsert_manual_asset(key: str, name: str | None, value: float, kind: str = "vehicle", entity: str | None = None,
+                        asof: str | None = None, provider: LedgerProvider | None = None) -> tuple[dict | None, dict]:
+    """Add or revalue a manually valued asset (a vehicle, a collectible, a property with no Zillow page) and write
+    its value to the ledger now. Returns (before, after) for the change log."""
+    import re
+
+    asof = asof or date.today().isoformat()
+    key = re.sub(r"[^a-z0-9_]+", "_", key.lower()).strip("_")
+    if not key:
+        raise ValueError("asset key is empty")
+    if kind not in KIND_TO_TYPE:
+        raise ValueError(f"kind must be one of {', '.join(KIND_TO_TYPE)}")
+    props = load()
+    cur = next((p for p in props if p.get("key") == key), None)
+    before = dict(cur) if cur else None
+    if cur is None:
+        if not name:
+            raise ValueError("a new asset needs a name")
+        cur = {"key": key, "name": name, "kind": kind, "entity": entity or HOUSEHOLD, "source": "manual"}
+        props.append(cur)
+    elif cur.get("source") == "zillow":
+        raise ValueError(f"{key} is valued from Zillow; set source: manual in properties.yml to value it by hand")
+    if name:
+        cur["name"] = name
+    cur["manual_value"] = float(value)
+    cur["last_refreshed"] = asof
+    if provider is None:
+        from . import providers
+
+        provider = providers.current()
+    if provider is not None:
+        ensure_accounts(provider, [cur])
+        provider.set_manual_balance(cur["ledger_account_id"], date.fromisoformat(asof), float(value),
+                                    note=f"focos manual value {asof}")
+    save(props)
+    return before, {k: cur.get(k) for k in ("key", "name", "kind", "entity", "manual_value", "ledger_account_id")}
+

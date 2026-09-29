@@ -35,8 +35,23 @@ const OWNER: Record<string, string> = {
   prices_stale: "/portfolio",
   sandbox_unfunded: "/sandbox",
   profile_incomplete: "/plan",
+  sandbox_stop_breached: "/sandbox",
+  sandbox_unmanaged: "/sandbox",
+  feed_auth: "/wealth",
+  decisions_waiting: "/plan",
+  app_issue: "/health",
+  claude_login_expiring: "/health",
+  robinhood_login_expired: "/health",
+  robinhood_not_connected: "/health",
+  robinhood_access_expired: "/health",
 };
-const PAGE_NAME: Record<string, string> = { "/wealth": "Wealth", "/portfolio": "Portfolio", "/sandbox": "Sandbox", "/plan": "Plan" };
+const PAGE_NAME: Record<string, string> = {
+  "/wealth": "Wealth",
+  "/portfolio": "Portfolio",
+  "/sandbox": "Sandbox",
+  "/plan": "Plan",
+  "/health": "Health",
+};
 
 interface Item {
   sev: Sev | "question" | "approve";
@@ -67,6 +82,7 @@ const TYPE_GROUPS: { key: string; label: string; types: string[]; liability?: bo
   { key: "cash", label: "Cash", types: ["depository"] },
   { key: "invest", label: "Investments", types: ["investment"] },
   { key: "property", label: "Real estate", types: ["property"] },
+  { key: "vehicle", label: "Vehicles", types: ["vehicle"] },
   { key: "cards", label: "Credit cards", types: ["credit_card"], liability: true },
   { key: "loans", label: "Loans", types: ["loan"], liability: true },
 ];
@@ -129,9 +145,15 @@ export default function Today() {
   const updates = recentChanges(8);
   const seen = new Set<string>();
   const key = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, "").slice(0, 48);
+  const issueFor = (a: { code: string; data?: Record<string, unknown> }) => {
+    const sym = typeof a.data?.symbol === "string" ? `:${a.data.symbol}` : "";
+    return al?.issues?.[`${a.code}${sym}`] ?? al?.issues?.[a.code];
+  };
   for (const a of al?.alerts ?? []) {
     seen.add(key(a.text));
-    items.push({ sev: a.severity, text: clean(a.text), source: a.code.replace(/_/g, " "), href: OWNER[a.code] });
+    const days = issueFor(a)?.days_open ?? 0;
+    const since = days >= 2 ? ` (open ${days} days)` : "";
+    items.push({ sev: a.severity, text: clean(a.text) + since, source: a.code.replace(/_/g, " "), href: OWNER[a.code] });
   }
   for (const a of br?.alerts ?? []) {
     if (seen.has(key(a.text))) continue;

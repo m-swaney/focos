@@ -8,6 +8,20 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _no_real_notifications(monkeypatch: pytest.MonkeyPatch):
+    """No test may pop a toast on the developer's desktop or push to their phone. Tests that care about what
+    would have been sent read `notify.SENT`."""
+    from focos import notify
+
+    sent: list[dict] = []
+    monkeypatch.setattr(notify, "_toast", lambda title, body: sent.append({"title": title, "body": body}) or "ok")
+    monkeypatch.setattr(notify, "_ntfy", lambda *a, **k: "ok")
+    monkeypatch.delenv(notify.TOPIC_ENV, raising=False)
+    monkeypatch.setattr(notify, "SENT", sent, raising=False)
+    yield sent
+
+
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     from focos import paths, settings

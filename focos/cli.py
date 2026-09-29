@@ -375,11 +375,15 @@ def serve(with_dashboard: bool = typer.Option(True, "--with-dashboard/--no-dashb
 @app.command("update")
 def update_cmd(check: bool = typer.Option(False, "--check", help="only report whether a newer release exists"),
                force: bool = typer.Option(False, "--force", help="reinstall even if not newer"),
+               auto: bool = typer.Option(False, "--auto", help="the nightly job: update if newer, skip mid-run, notify"),
                repo: str = typer.Option(None, help="GitHub repo (owner/name)")) -> None:
     """Fetch and install the newest release next to this one, migrate the data dir, and re-point the service."""
     from . import updater
 
     r = repo or updater.DEFAULT_REPO
+    if auto:
+        _echo(updater.auto_update(r, log=lambda m: typer.echo(f"[update] {m}")))
+        return
     if check:
         _echo(updater.check(r))
         return
@@ -690,6 +694,86 @@ def property_refresh(date: str = typer.Option(None), no_push: bool = False,
 @property_app.command("show")
 def property_show() -> None:
     _echo(settings.read_json(paths.LATEST / "properties.json", {"available": False}))
+
+
+asset_app = typer.Typer(no_args_is_help=True, help="Things you own that no feed carries (a vehicle, a collectible).")
+app.add_typer(asset_app, name="asset")
+
+
+@asset_app.command("add")
+def asset_add(name: str = typer.Argument(..., help='e.g. "2019 pickup truck"'),
+              value: float = typer.Option(..., "--value", help="current value in dollars"),
+              kind: str = typer.Option("vehicle", help="vehicle | real_estate | other"),
+              key: str = typer.Option(None, help="short key (default: from the name)"),
+              entity: str = typer.Option(None, help="owning entity (default: personal)")) -> None:
+    """Add a manually valued asset to net worth; it becomes a ledger account right away."""
+    from .updates import apply as upd_apply
+
+    k = key or "_".join(name.lower().split())[:40]
+    recs = upd_apply.apply([{"target": "asset", "op": "add", "id": k, "name": name, "kind": kind, "value": value,
+                             "entity": entity, "reason": "added from the command line"}], actor="user", run="cli")
+    _echo(recs[0])
+    if not recs[0].get("ok"):
+        raise typer.Exit(1)
+
+
+@asset_app.command("set")
+def asset_set(key: str, value: float = typer.Option(..., "--value")) -> None:
+    """Revalue a manual asset (e.g. once a year from Kelley Blue Book)."""
+    from .updates import apply as upd_apply
+
+    recs = upd_apply.apply([{"target": "asset", "op": "set", "id": key, "value": value,
+                             "reason": "revalued from the command line"}], actor="user", run="cli")
+    _echo(recs[0])
+    if not recs[0].get("ok"):
+        raise typer.Exit(1)
+
+
+notify_app = typer.Typer(no_args_is_help=True, help="Desktop and phone notifications.")
+app.add_typer(notify_app, name="notify")
+
+
+@notify_app.command("test")
+def notify_test() -> None:
+    """Send a test notification on every enabled channel."""
+    from . import notify
+
+    _echo(notify.send("focos test", "Notifications are working.", "info", force=True))
+
+
+@notify_app.command("phone")
+def notify_phone(off: bool = typer.Option(False, "--off", help="stop phone notifications")) -> None:
+    """Turn on phone push via ntfy: creates a private topic, stores it in .env, and prints how to subscribe."""
+    import secrets
+
+    from . import notify
+    from .config import writer
+
+    if off:
+        writer.set_env(notify.TOPIC_ENV, None)
+        _echo({"phone": "off"})
+        return
+    topic = os.environ.get(notify.TOPIC_ENV) or f"focos-{secrets.token_urlsafe(18).replace('_', '').replace('-', '')[:24]}"
+    writer.set_env(notify.TOPIC_ENV, topic)
+    server = str((settings.focos().get("notify") or {}).get("ntfy_server") or "https://ntfy.sh").rstrip("/")
+    typer.echo("Phone notifications are on.\n"
+               "1. Install the free ntfy app (iOS App Store / Google Play).\n"
+               f"2. Subscribe to this topic: {topic}" + ("" if server == "https://ntfy.sh" else f" on server {server}") + "\n"
+               f"   or open {server}/{topic} on the phone.\n"
+               "Treat the topic like a password: anyone who knows it can read the alerts.")
+    notify.send("focos: phone notifications on", "You will get stop exits, failed runs, and logins that need you here.",
+                "info", force=True)
+
+
+@notify_app.command("log")
+def notify_log(n: int = 20) -> None:
+    """The most recent notifications focos sent."""
+    from . import notify
+
+    p = notify.log_file()
+    lines = p.read_text(encoding="utf-8").splitlines()[-n:] if p.exists() else []
+    for line in lines:
+        typer.echo(line)
 
 
 @app.command()

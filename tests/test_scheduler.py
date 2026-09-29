@@ -15,7 +15,8 @@ def test_run_jobs_from_config(initialized_home: Path):
         "daily": {"days": "daily", "time": "07:05"}, "weekly": {"day": "sat", "time": "09:00"}, "monthly": {"day": 3, "time": "20:15"}}}))
     settings.reset()
     jobs = {j.key: j for j in scheduler.run_jobs()}
-    assert set(jobs) == {"daily", "weekly", "monthly", "trade1", "trade2", "trade3"}  # trade passes are on by default
+    # trade passes and the nightly update are on by default
+    assert set(jobs) == {"daily", "weekly", "monthly", "trade1", "trade2", "trade3", "update"}
     d = jobs["daily"]
     assert d.schedule.kind == "daily" and d.schedule.hour == 7 and d.schedule.minute == 5
     assert d.argv[1:4] == ["-I", "-m", "focos"] and "--home" in d.argv and str(paths.HOME) in d.argv

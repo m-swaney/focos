@@ -85,17 +85,23 @@ def render_trade_snapshot(date: str, run_id: str = "manual") -> str:
     return render_placeholders(text, date=date, run_id=run_id, run_mode="trade") + SNAPSHOT_SUFFIX
 
 
-def render_trade(date: str, run_id: str = "manual", now: _datetime | None = None, exits_only: bool = False) -> str:
+def render_trade(date: str, run_id: str = "manual", now: _datetime | None = None, exits_only: bool = False,
+                 exits_block: str | None = None) -> str:
     """T-C of a trading pass. {{TIME}} is filled so the model knows how much of the session is left, in the
     market's timezone the prompt labels it with -- not the machine's, which need not be the same.
 
     The exits pass gets its own prompt rather than a conditional one: a single prompt that argues both sides
-    invites the model to decide which half applies today."""
+    invites the model to decide which half applies today.
+
+    {{EXITS}} carries the exit plan focos computed in code (sandbox/exits.py): breached stops with the exact
+    order to send, and positions that lack a resting stop."""
     from ..sandbox import brokers
 
     name = "trade_exits.md" if exits_only else "trade.md"
     text = (paths.AGENT / "prompts" / name).read_text(encoding="utf-8")
     at = (now or _datetime.now(ZoneInfo(brokers.current().market_tz))).strftime("%H:%M")
+    block = exits_block or "Nothing to execute: trading is not live, or there are no open positions."
+    text = text.replace("{{EXITS}}", block) if "{{EXITS}}" in text else text + "\n\n## Exit plan\n\n" + block
     return render_placeholders(text.replace("{{TIME}}", at), date=date, run_id=run_id, run_mode="trade") + TRADE_RESULT_CONTRACT
 
 

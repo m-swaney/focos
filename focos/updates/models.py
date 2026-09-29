@@ -7,7 +7,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
-TARGETS = ("goal", "tax_agenda", "profile", "spending", "decision", "merchant_rule")
+TARGETS = ("goal", "tax_agenda", "profile", "spending", "decision", "merchant_rule", "asset")
 PROFILE_NOTE_PATHS = ("income.notes", "cash_policy.notes", "risk.notes", "family.notes")
 
 
@@ -101,7 +101,19 @@ class MerchantRuleUpdate(_Base):
         return v
 
 
-Update = Annotated[Union[GoalUpdate, TaxAgendaUpdate, ProfileNoteUpdate, SpendingUpdate, DecisionUpdate, MerchantRuleUpdate],
+class AssetUpdate(_Base):
+    """A manually valued asset the owner told us about (a vehicle, a collectible). `id` is a short key."""
+    target: Literal["asset"]
+    op: Literal["add", "set"] = "add"
+    id: str
+    name: str | None = None
+    kind: Literal["real_estate", "vehicle", "other"] = "vehicle"
+    value: float = Field(gt=0)
+    entity: str | None = None
+
+
+Update = Annotated[Union[GoalUpdate, TaxAgendaUpdate, ProfileNoteUpdate, SpendingUpdate, DecisionUpdate, MerchantRuleUpdate,
+                         AssetUpdate],
                    Field(discriminator="target")]
 _ADAPTER = TypeAdapter(Update)
 

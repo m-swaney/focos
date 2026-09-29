@@ -3,7 +3,7 @@ from pathlib import Path
 
 from focos import paths
 from focos.agent_runtime import settings_render
-from focos.sandbox.brokers.robinhood import PLACE, REVIEW, RobinhoodAdapter
+from focos.sandbox.brokers.robinhood import CANCEL, PLACE, REVIEW, RobinhoodAdapter
 
 
 def test_render_writes_hooks_with_this_interpreter(initialized_home: Path):
@@ -11,7 +11,7 @@ def test_render_writes_hooks_with_this_interpreter(initialized_home: Path):
     doc = json.loads(files["settings"].read_text(encoding="utf-8"))
     assert files["settings"] == paths.HOME_AGENT / "settings.headless.json"
     pre = doc["hooks"]["PreToolUse"][0]
-    assert pre["matcher"] == f"{PLACE}|{REVIEW}"
+    assert pre["matcher"] == f"{PLACE}|{REVIEW}|{CANCEL}"
     cmd = pre["hooks"][0]["command"]
     assert cmd.startswith('"C:/venv/Scripts/python.exe" -m focos.sandbox.gate --home "')
     assert paths.HOME.as_posix() in cmd

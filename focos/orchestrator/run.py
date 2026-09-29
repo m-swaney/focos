@@ -90,6 +90,16 @@ def _ledger_backup(date: str) -> str | None:
     return str(res)
 
 
+def _notify_failed(mode: str, date: str, detail: str) -> None:
+    try:
+        from .. import notify
+
+        notify.send(f"focos: {mode} run failed", (detail or "see state/logs")[:300], "critical",
+                    key=f"run_failed:{mode}:{date}")
+    except Exception:  # noqa: BLE001 -- telling someone must never be what breaks
+        pass
+
+
 def run(opts: RunOptions) -> RunResult:
     paths.ensure_dirs()
     date = opts.date or _date.today().isoformat()
@@ -114,6 +124,7 @@ def run(opts: RunOptions) -> RunResult:
             res.ok = False
             res.stages["A"] = f"failed: {why}"
             status.finish(opts.mode, False, f"A : {why}")
+            _notify_failed(opts.mode, date, f"holdings: {why}")
             return res
         try:
             snap = src.capture(date, opts.mode, run_id)
@@ -129,7 +140,19 @@ def run(opts: RunOptions) -> RunResult:
             res.ok = False
             res.stages["A"] = f"failed: {msg}"
             status.finish(opts.mode, False, f"A : {msg}")
+            _notify_failed(opts.mode, date, f"holdings: {msg}")
             return res
+
+    # ---- monthly: revalue real estate and manual assets before the pipeline reads net worth. properties.yml has
+    # promised this since the cutover; nothing called it.
+    if opts.mode == "monthly" and not opts.skip_b:
+        try:
+            from ..ledger import properties
+
+            pr = properties.refresh(date)
+            log.info("properties: %d valued, total %s", len(pr.get("properties") or []), pr.get("total_value"))
+        except Exception as e:  # noqa: BLE001
+            log.warning("property refresh skipped: %s", e)
 
     # ---- Stage B: pipeline
     if opts.skip_b:
@@ -150,6 +173,7 @@ def run(opts: RunOptions) -> RunResult:
             res.ok = False
             res.stages["B"] = f"failed: {msg}"
             status.finish(opts.mode, False, f"B : {msg}")
+            _notify_failed(opts.mode, date, f"pipeline: {msg}")
             return res
 
     # ---- Stage C: brief
@@ -201,6 +225,8 @@ def run(opts: RunOptions) -> RunResult:
         except Exception as e:  # noqa: BLE001
             log.warning("git step skipped: %s", e)
 
+    if not res.ok:
+        _notify_failed(opts.mode, date, "; ".join(v for v in res.stages.values() if str(v).startswith("failed")))
     br = settings.read_json(paths.LATEST / "brief_result.json", {}) or {}
     status.finish(opts.mode, res.ok, None if res.ok else "; ".join(v for v in res.stages.values() if v.startswith("failed")),
                   br.get("summary_line") if not opts.skip_c else None, br.get("report_path") if not opts.skip_c else None,
