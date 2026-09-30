@@ -180,7 +180,30 @@ def update(repo: str = DEFAULT_REPO, log=print, force: bool = False) -> dict:
     app_pointer().write_text(str(new_app) + "\n", encoding="utf-8")
     _rewire(py, home, log)
     _prune(base, {new_app, app}, log)
-    return {"mode": "release", "current": cur, "available": rel["tag"], "updated": True, "app": str(new_app)}
+    serving = serving_version(expect=installed_version(new_app))
+    log(f"dashboard service now on {serving or 'unknown'}")
+    return {"mode": "release", "current": cur, "available": rel["tag"], "updated": True, "app": str(new_app),
+            "service_version": serving}
+
+
+def serving_version(expect: str | None = None, timeout_s: float = 60.0) -> str | None:
+    """The version the running local API reports, waiting up to timeout_s for it to become `expect`."""
+    import time
+
+    from . import settings
+
+    port = int((settings.focos().get("dashboard") or {}).get("api_port") or 3101)
+    deadline = time.time() + timeout_s
+    got = None
+    while True:
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as r:  # noqa: S310
+                got = json.loads(r.read().decode("utf-8")).get("version")
+        except Exception:  # noqa: BLE001 -- still starting
+            got = None
+        if expect is None or got == expect or time.time() >= deadline:
+            return got
+        time.sleep(2)
 
 
 def run_in_flight(max_hours: float = 3.0) -> str | None:
@@ -223,6 +246,12 @@ def auto_update(repo: str = DEFAULT_REPO, log=print) -> dict:
         notify.send("focos: update failed", f"Could not update from {cur}: {str(e)[:200]}", "warn", key="update_failed")
         return {"current": cur, "updated": False, "error": str(e)[:300]}
     if out.get("updated"):
-        notify.send("focos updated", f"Now on {out.get('available')} (was {cur}).", "info", key=f"updated:{out.get('available')}")
+        new = str(out.get("available") or "").lstrip("v")
+        if out.get("service_version") and out.get("service_version") != new:
+            notify.send("focos: dashboard still on the old version",
+                        f"Installed {new}, but the dashboard is serving {out.get('service_version')}. "
+                        "Run `focos service stop` then `focos service start`.", "warn", key=f"service_stale:{new}")
+        else:
+            notify.send("focos updated", f"Now on {new} (was {cur}).", "info", key=f"updated:{new}")
     return out
 

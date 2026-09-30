@@ -44,7 +44,9 @@ def create_app(token: str | None = None) -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"ok": True, "home": str(paths.HOME)}
+        from ..updater import installed_version
+
+        return {"ok": True, "home": str(paths.HOME), "version": installed_version()}
 
     for r in (setup, ai, ledger, holdings, interview, config, schedule, run, doctor, inbox, updates, needs_you):
         app.include_router(r.router)

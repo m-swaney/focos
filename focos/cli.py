@@ -308,14 +308,44 @@ def schedule_show() -> None:
 
 @service_app.command("install")
 def service_install(start: bool = typer.Option(True, help="start it now")) -> None:
-    """Register the at-login dashboard/API service and (by default) start it."""
+    """Register the at-login dashboard/API service and (by default) restart it on this version.
+
+    The running instance is stopped first. Task Scheduler ignores a start while an instance is running, so
+    without this an update re-registered the service and left the previous version's dashboard serving."""
     from . import scheduler
+    from .service.supervisor import reap_orphans
 
     sch = scheduler.current()
+    stopped = False
+    if start:
+        stopped = sch.stop(scheduler.JOB_NAMES["service"])
+        reap_orphans()
     res = sch.install([scheduler.service_job()])
     if start and res and res[0].installed:
+        _wait_ports_free()
         sch.start(scheduler.JOB_NAMES["service"])
-    _echo([s.model_dump() for s in res])
+    _echo({"restarted": stopped, "jobs": [s.model_dump() for s in res]})
+
+
+def _wait_ports_free(timeout_s: float = 20.0) -> bool:
+    """Give the stopped dashboard and API a moment to release their ports before the new ones bind."""
+    import socket
+    import time
+
+    dash = settings.focos().get("dashboard") or {}
+    ports = [int(dash.get("port") or 3100), int(dash.get("api_port") or 3101)]
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        busy = False
+        for port in ports:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.5)
+                if s.connect_ex(("127.0.0.1", port)) == 0:
+                    busy = True
+        if not busy:
+            return True
+        time.sleep(0.5)
+    return False
 
 
 @service_app.command("uninstall")
