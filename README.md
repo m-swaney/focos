@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/m-swaney/focos/main/installers/inst
 ```
 
 The installer puts the app under `~/.focos/app-<version>` with its own Python and Node runtimes, creates your
-data folder at `~/focos-home`, registers the dashboard to start at login, and opens the setup wizard at
+data folder at `~/focos-home`, registers focos to start at login, and opens the setup wizard at
 `http://localhost:3100/setup`. Setup takes about ten minutes:
 
 1. **AI**: paste one API key (Anthropic, OpenAI, or Gemini) or point at a local Ollama.
@@ -35,8 +35,17 @@ data folder at `~/focos-home`, registers the dashboard to start at login, and op
 3. **Accounts**: confirm which accounts belong to the household or to a business, and which brokerage accounts to analyze.
 4. **Holdings**: use the feed's holdings, enter a short table, or skip.
 5. **Profile**: a five-minute interview with your AI fills in income, spending, debts, retirement, and goals. You confirm every proposal.
-6. **Schedule**: pick the times. Windows Task Scheduler or macOS launchd runs it while you are logged in.
+6. **Schedule**: pick the times. focos runs them itself while you are logged in, and catches up on anything
+   it missed while the computer was off.
 7. **First run**: watch it produce the first brief.
+
+## One app
+
+focos is one program that starts when you log in and keeps running: it serves the dashboard, runs every
+scheduled job (the briefs, the trading passes, the Robinhood keep-alive), and installs its own updates
+overnight. The operating system only knows about that one thing, and checks every minute that it is still
+running. `focos status` tells you whether it is, what runs next, what ran last, and how much needs you;
+`focos restart` is the one fix-it command.
 
 ## What you get
 
@@ -70,11 +79,12 @@ focos done goal <id>            # mark a goal done (also: done tax <id>, done de
 focos changes                   # what changed in goals, agenda, spending, decisions, and who changed it
 focos ledger refresh            # pull the bank feed
 focos ledger categorize         # apply merchant rules and label new merchants
-focos intraday                  # re-price holdings now from delayed quotes (the service does this on a timer)
+focos status                    # running? what runs next, what ran last, what needs you
+focos restart                   # stop and start focos (dashboard and schedule)
+focos intraday                  # re-price holdings now from delayed quotes (the app does this on a timer)
 focos holdings capture          # refresh holdings
 focos auth robinhood            # connect (or reconnect) Robinhood in agent mode
 focos ai test                   # check the AI key
-focos schedule status           # what is scheduled
 focos doctor                    # health checks with fixes
 focos notify phone              # push alerts to your phone (free ntfy app); `focos notify test` to check
 focos asset add "2019 pickup truck" --value 21000   # something you own that no feed carries
@@ -98,7 +108,7 @@ is logged to `state/changes.jsonl`, shown under "Recent updates", and reported b
   trading sandbox (`config/sandbox_rules.yml`, off by default). See `agent/prompts/`. Connect Robinhood with
   `focos auth robinhood`; a small daily keep-alive job (`schedule.keepalive`) refreshes the login so it does not
   lapse over weekends, and `focos doctor` says when you need to sign in again.
-- **Between runs**: the dashboard service re-prices your holdings from free delayed quotes every 15 minutes
+- **Between runs**: the app re-prices your holdings from free delayed quotes every 15 minutes
   during market hours and pulls the bank feed once at midday, so a page left open keeps moving instead of
   waiting for the evening run. It never calls the AI or the broker, never rewrites the day's snapshot, and
   writes only to `state/cache/`. Turn it off or retime it under `intraday` in `config/focos.yml`.
@@ -128,6 +138,11 @@ cd dashboard && npm ci && npm run dev   # http://localhost:3100
 
 `scripts/private_scan.py` scans the tree for secrets and personal data; CI runs it on every push. Please keep
 real account names, institutions, and amounts out of tests and fixtures.
+
+A checkout never runs scheduled jobs (the heartbeat is off when the app directory is a git checkout), so pointing
+it at a real data folder to look at the dashboard is safe. To release: bump `version` in `pyproject.toml`,
+commit, and push a `v<version>` tag; the release workflow tests, scans, builds the bundle, and publishes it, and
+installed copies pick it up in their nightly update.
 
 ## Safety model
 

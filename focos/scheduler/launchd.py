@@ -59,7 +59,14 @@ class LaunchdScheduler:
 
     def install(self, jobs: list[Job]) -> list[JobStatus]:
         from .. import paths
+        from .base import LEGACY_JOB_NAMES
 
+        # one agent per job before 0.4; the app agent replaces them all
+        for n in LEGACY_JOB_NAMES:
+            old = plist_path(n)
+            if old.exists():
+                _launchctl("bootout", _domain(), str(old))
+                old.unlink()
         out = []
         for job in jobs:
             p = plist_path(job.name)
@@ -74,10 +81,10 @@ class LaunchdScheduler:
         return out
 
     def uninstall(self, names: list[str] | None = None) -> list[str]:
-        from .base import JOB_NAMES
+        from .base import APP_JOB, LEGACY_JOB_NAMES
 
         removed = []
-        for n in names or list(JOB_NAMES.values()):
+        for n in names or [APP_JOB] + LEGACY_JOB_NAMES:
             p = plist_path(n)
             _launchctl("bootout", _domain(), str(p))
             if p.exists():
@@ -86,10 +93,10 @@ class LaunchdScheduler:
         return removed
 
     def status(self, names: list[str] | None = None) -> list[JobStatus]:
-        from .base import JOB_NAMES
+        from .base import APP_JOB
 
         out = []
-        for n in names or list(JOB_NAMES.values()):
+        for n in names or [APP_JOB]:
             p = plist_path(n)
             if not p.exists():
                 out.append(JobStatus(name=n, installed=False))

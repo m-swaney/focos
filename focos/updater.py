@@ -126,8 +126,9 @@ def _prepare_env(app: Path, log) -> Path:
 
 
 def _rewire(py: Path, home: Path, log) -> None:
-    """Run the NEW version's migrate / settings render / service + schedule install so every absolute path points at it."""
-    for args in (["migrate"], ["agent", "render-settings"], ["schedule", "install"], ["service", "install"]):
+    """Run the NEW version's migrate / settings render / app install so every absolute path points at it. The
+    running app notices app.txt changed and restarts itself onto the new version once its current job ends."""
+    for args in (["migrate"], ["agent", "render-settings"], ["schedule", "install"]):
         r = subprocess.run([str(py), "-I", "-m", "focos", "--home", str(home), *args], capture_output=True, text=True)
         log(f"{' '.join(args)}: {'ok' if r.returncode == 0 else 'failed: ' + (r.stderr or r.stdout)[-200:]}")
 
@@ -180,8 +181,12 @@ def update(repo: str = DEFAULT_REPO, log=print, force: bool = False) -> dict:
     app_pointer().write_text(str(new_app) + "\n", encoding="utf-8")
     _rewire(py, home, log)
     _prune(base, {new_app, app}, log)
-    serving = serving_version(expect=installed_version(new_app))
-    log(f"dashboard service now on {serving or 'unknown'}")
+    # Run by the app itself (the nightly job), the app restarts only after this process exits, so there is
+    # nothing to wait for here; the app announces the new version when it comes back.
+    serving = None if os.environ.get("FOCOS_HEARTBEAT_CHILD") else serving_version(expect=installed_version(new_app),
+                                                                                   timeout_s=150)
+    if serving:
+        log(f"app now running {serving}")
     return {"mode": "release", "current": cur, "available": rel["tag"], "updated": True, "app": str(new_app),
             "service_version": serving}
 
@@ -248,10 +253,36 @@ def auto_update(repo: str = DEFAULT_REPO, log=print) -> dict:
     if out.get("updated"):
         new = str(out.get("available") or "").lstrip("v")
         if out.get("service_version") and out.get("service_version") != new:
-            notify.send("focos: dashboard still on the old version",
-                        f"Installed {new}, but the dashboard is serving {out.get('service_version')}. "
-                        "Run `focos service stop` then `focos service start`.", "warn", key=f"service_stale:{new}")
-        else:
-            notify.send("focos updated", f"Now on {new} (was {cur}).", "info", key=f"updated:{new}")
+            notify.send("focos: still running the old version",
+                        f"Installed {new}, but the app is still running {out.get('service_version')}. "
+                        "Run `focos restart`.", "warn", key=f"service_stale:{new}")
+        # the success message comes from the app when it restarts on the new version (heartbeat)
     return out
 
+
+def write_shims(log=print) -> list[str]:
+    """`focos` on the command line in every shell: focos.cmd for cmd/PowerShell, and an extensionless script for
+    Git Bash (which does not run .cmd files by bare name). Both read app.txt, so they never need rewriting."""
+    bin_dir = base_dir() / "bin"
+    written = []
+    if sys.platform != "win32":
+        return written
+    try:
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        cmd = bin_dir / "focos.cmd"
+        if not cmd.exists():
+            cmd.write_text('@echo off\r\nsetlocal\r\nset /p APP=<"%USERPROFILE%\\.focos\\app.txt"\r\n'
+                           '"%APP%\\.venv\\Scripts\\python.exe" -I -m focos %*\r\n', encoding="ascii")
+            written.append(str(cmd))
+        sh = bin_dir / "focos"
+        text = ('#!/bin/sh\n'
+                '# focos for Git Bash / MSYS: the same app focos.cmd runs.\n'
+                'APP="$(tr -d \'\\r\' < "$USERPROFILE/.focos/app.txt")"\n'
+                'command -v cygpath >/dev/null 2>&1 && APP="$(cygpath -u "$APP")"\n'
+                'exec "$APP/.venv/Scripts/python.exe" -I -m focos "$@"\n')
+        if not sh.exists() or sh.read_text(encoding="utf-8") != text:
+            sh.write_text(text, encoding="utf-8", newline="\n")
+            written.append(str(sh))
+    except OSError as e:
+        log(f"could not write the focos command shims: {e}")
+    return written

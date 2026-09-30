@@ -9,9 +9,15 @@ from pydantic import BaseModel
 
 from .. import paths, settings
 
+# The job table below is what the app runs (focos/heartbeat.py). The operating system runs exactly one thing:
+# APP_JOB, the long-running app, started at login and re-checked every minute so it comes back if it stops.
+APP_JOB = "focos"
 JOB_NAMES = {"daily": "focos-daily", "weekly": "focos-weekly", "monthly": "focos-monthly", "keepalive": "focos-keepalive",
-             "update": "focos-update", "service": "focos-dashboard"}
+             "update": "focos-update", "service": APP_JOB, "app": APP_JOB}
 TRADE_JOB_PREFIX = "focos-trade"
+# Per-job OS tasks from before 0.4, removed whenever the app task is installed.
+LEGACY_JOB_NAMES = ["focos-daily", "focos-weekly", "focos-monthly", "focos-keepalive", "focos-update", "focos-dashboard"] + [
+    f"{TRADE_JOB_PREFIX}-{i}" for i in range(1, 10)]
 
 
 def trade_job_name(index: int) -> str:
@@ -55,6 +61,7 @@ class Job(BaseModel):
     wake: bool = True
     time_limit_minutes: int | None = 45
     log: str | None = None
+    repeat_minutes: int | None = None   # also start every N minutes (a no-op while it is already running)
 
 
 class JobStatus(BaseModel):
@@ -132,7 +139,17 @@ def run_jobs(cfg: dict | None = None) -> list[Job]:
     return jobs
 
 
-def service_job() -> Job:
-    return Job(key="service", name=JOB_NAMES["service"], description="focos dashboard and local API",
+def app_job() -> Job:
+    """The one OS task: the app itself (dashboard, local API, and every scheduled job via the heartbeat)."""
+    return Job(key="app", name=APP_JOB, description="focos: dashboard, scheduled runs, and updates",
                argv=_base_argv(True) + ["serve", "--with-dashboard"], cwd=str(paths.HOME), schedule=None,
-               keep_alive=True, wake=False, time_limit_minutes=None, log=str(paths.LOGS / "service.log"))
+               keep_alive=True, wake=False, time_limit_minutes=None, repeat_minutes=1,
+               log=str(paths.LOGS / "service.log"))
+
+
+service_job = app_job
+
+
+def os_jobs() -> list[Job]:
+    """What gets registered with the operating system: just the app."""
+    return [app_job()]

@@ -32,7 +32,7 @@ export function ScheduleStep() {
     setJobs(r.jobs ?? []);
     const bad = (r.jobs ?? []).filter((j: { installed: boolean }) => !j.installed);
     setMsg(bad.length ? { kind: "warn", text: `Saved, but ${bad.length} job(s) did not install: ${bad.map((j: { detail?: { error?: string } }) => j.detail?.error).join("; ")}` }
-                      : { kind: "ok", text: `Installed on ${r.platform}. The next daily run is ${r.jobs?.[0]?.next_run ?? "scheduled"}.` });
+                      : { kind: "ok", text: `Installed on ${r.platform}. focos starts at login and runs everything below; next: ${r.jobs?.[0]?.name ?? "a run"} at ${r.jobs?.[0]?.next_run ?? "its time"}.` });
   };
   const installed = jobs.some((j) => j.installed);
 

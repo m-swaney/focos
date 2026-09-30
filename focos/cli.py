@@ -32,7 +32,8 @@ app.add_typer(config_app, name="config")
 from .ledger.cli import ledger_app  # noqa: E402
 
 app.add_typer(ledger_app, name="ledger")
-status_app = typer.Typer(no_args_is_help=True)
+status_app = typer.Typer(no_args_is_help=False, invoke_without_command=True,
+                         help="Is focos running, what runs next, what ran last, and what needs you.")
 sandbox_app = typer.Typer(no_args_is_help=True)
 app.add_typer(status_app, name="status")
 app.add_typer(sandbox_app, name="sandbox")
@@ -254,126 +255,94 @@ def ai_estimate(mode: str = "daily", date: str = typer.Option(None)) -> None:
            "input_tokens_est": est_in, "output_tokens_est": est_out})
 
 
-schedule_app = typer.Typer(no_args_is_help=True, help="Scheduled runs (Task Scheduler on Windows, launchd on macOS).")
+schedule_app = typer.Typer(no_args_is_help=True, help="The schedule the app runs (times live in config/focos.yml).")
 app.add_typer(schedule_app, name="schedule")
-service_app = typer.Typer(no_args_is_help=True, help="The always-on dashboard/API process.")
+service_app = typer.Typer(no_args_is_help=True, help="The focos app itself: dashboard, local API, and scheduled runs.")
 app.add_typer(service_app, name="service")
+
+
+def _install_app(start: bool = True) -> dict:
+    from . import scheduler
+
+    return scheduler.install_app(start)
 
 
 @schedule_app.command("install")
 def schedule_install() -> None:
-    """Register the daily, weekly, and monthly runs from config/focos.yml schedule (re-run to update)."""
-    from . import scheduler
-
-    _echo([s.model_dump() for s in scheduler.current().install(scheduler.run_jobs())])
+    """Install focos to start at login and keep running (one task). The run times come from config/focos.yml."""
+    _echo(_install_app())
 
 
 @schedule_app.command("uninstall")
 def schedule_uninstall() -> None:
     from . import scheduler
+    from .service.supervisor import reap_orphans
 
-    _echo({"removed": scheduler.current().uninstall([scheduler.JOB_NAMES[k] for k in ("daily", "weekly", "monthly")])})
+    sch = scheduler.current()
+    sch.stop(scheduler.APP_JOB)
+    reap_orphans()
+    _echo({"removed": sch.uninstall()})
 
 
 @schedule_app.command("status")
 def schedule_status() -> None:
-    from . import scheduler
+    """The app task, plus what the app will run next."""
+    from . import heartbeat, scheduler
 
-    # Trade jobs are numbered from the config rather than named in JOB_NAMES, so ask for them by name --
-    # otherwise the intraday passes run without ever showing up in status.
-    names = list(scheduler.JOB_NAMES.values()) + [j.name for j in scheduler.run_jobs() if j.key.startswith("trade")]
-    _echo([s.model_dump() for s in scheduler.current().status(names)])
+    st = heartbeat.read_state()
+    _echo({"app_task": [s.model_dump() for s in scheduler.current().status()], "running": heartbeat.alive(st),
+           "next": st.get("next") or [], "last": st.get("jobs") or {}})
 
 
 @schedule_app.command("show")
 def schedule_show() -> None:
-    """Print the job definitions (and the rendered task XML / plist) without installing anything."""
+    """Print the job table the app runs, and the rendered OS task, without installing anything."""
     import sys as _sys
 
     from . import scheduler
 
-    jobs = scheduler.run_jobs() + [scheduler.service_job()]
-    out = []
-    for j in jobs:
-        d = j.model_dump()
-        if _sys.platform == "win32":
-            from .scheduler.windows import task_xml
-            d["rendered"] = task_xml(j)
-        elif _sys.platform == "darwin":
-            from .scheduler.launchd import plist_text
-            d["rendered"] = plist_text(j, str(paths.HOME))
-        out.append(d)
+    out = {"jobs": [j.model_dump() for j in scheduler.run_jobs()], "os_task": None}
+    app_job = scheduler.app_job()
+    if _sys.platform == "win32":
+        from .scheduler.windows import task_xml
+        out["os_task"] = task_xml(app_job)
+    elif _sys.platform == "darwin":
+        from .scheduler.launchd import plist_text
+        out["os_task"] = plist_text(app_job, str(paths.HOME))
     _echo(out)
 
 
 @service_app.command("install")
 def service_install(start: bool = typer.Option(True, help="start it now")) -> None:
-    """Register the at-login dashboard/API service and (by default) restart it on this version.
-
-    The running instance is stopped first. Task Scheduler ignores a start while an instance is running, so
-    without this an update re-registered the service and left the previous version's dashboard serving."""
-    from . import scheduler
-    from .service.supervisor import reap_orphans
-
-    sch = scheduler.current()
-    stopped = False
-    if start:
-        stopped = sch.stop(scheduler.JOB_NAMES["service"])
-        reap_orphans()
-    res = sch.install([scheduler.service_job()])
-    if start and res and res[0].installed:
-        _wait_ports_free()
-        sch.start(scheduler.JOB_NAMES["service"])
-    _echo({"restarted": stopped, "jobs": [s.model_dump() for s in res]})
+    """Same as `focos schedule install`: there is one app, and it runs the dashboard and every scheduled job."""
+    _echo(_install_app(start))
 
 
 def _wait_ports_free(timeout_s: float = 20.0) -> bool:
-    """Give the stopped dashboard and API a moment to release their ports before the new ones bind."""
-    import socket
-    import time
+    from .scheduler import _wait_ports_free as wait
 
-    dash = settings.focos().get("dashboard") or {}
-    ports = [int(dash.get("port") or 3100), int(dash.get("api_port") or 3101)]
-    deadline = time.time() + timeout_s
-    while time.time() < deadline:
-        busy = False
-        for port in ports:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.5)
-                if s.connect_ex(("127.0.0.1", port)) == 0:
-                    busy = True
-        if not busy:
-            return True
-        time.sleep(0.5)
-    return False
+    return wait(timeout_s)
 
 
 @service_app.command("uninstall")
 def service_uninstall() -> None:
-    from . import scheduler
-    from .service.supervisor import reap_orphans
-
-    sch = scheduler.current()
-    sch.stop(scheduler.JOB_NAMES["service"])
-    reap_orphans()
-    _echo({"removed": sch.uninstall([scheduler.JOB_NAMES["service"]])})
+    schedule_uninstall()
 
 
 @service_app.command("start")
 def service_start() -> None:
     from . import scheduler
 
-    _echo({"started": scheduler.current().start(scheduler.JOB_NAMES["service"])})
+    _echo({"started": scheduler.current().start(scheduler.APP_JOB)})
 
 
 @service_app.command("stop")
 def service_stop() -> None:
-    """Ending the scheduled task kills the supervisor but not the dashboard it spawned, so reap that too;
-    otherwise the port stays held and the next `serve` cannot bind."""
+    """Stop the app. Ending the OS task does not end the dashboard it spawned, so that is reaped too."""
     from . import scheduler
     from .service.supervisor import reap_orphans
 
-    stopped = scheduler.current().stop(scheduler.JOB_NAMES["service"])
+    stopped = scheduler.current().stop(scheduler.APP_JOB)
     _echo({"stopped": stopped, "reaped": reap_orphans()})
 
 
@@ -382,11 +351,24 @@ def service_status() -> None:
     from . import scheduler
     from .service.supervisor import dashboard_command, node_exe
 
-    st = scheduler.current().status([scheduler.JOB_NAMES["service"]])[0].model_dump()
+    st = scheduler.current().status([scheduler.APP_JOB])[0].model_dump()
     cmd = dashboard_command()
     st["dashboard_command"] = cmd[0] if cmd else None
     st["node"] = node_exe()
     _echo(st)
+
+
+@app.command("restart")
+def restart_cmd() -> None:
+    """Stop focos and start it again (the dashboard and the scheduled runs)."""
+    from . import scheduler
+    from .service.supervisor import reap_orphans
+
+    sch = scheduler.current()
+    sch.stop(scheduler.APP_JOB)
+    reap_orphans()
+    _wait_ports_free()
+    _echo({"started": sch.start(scheduler.APP_JOB)})
 
 
 @app.command("serve")
@@ -627,6 +609,51 @@ def agent_args(stage: str = typer.Argument(..., help="A or C"), mode: str = "dai
                                        settings_file=files["settings"], system_prompt=files["system_prompt"],
                                        trade_enabled=trade_tools_enabled())
     _echo({"claude": claude_cli.find_claude(agent.get("claude_cli") or "auto"), "args": args})
+
+
+@status_app.callback()
+def status_summary(ctx: typer.Context) -> None:
+    """One screen: running or not, what runs next, what ran last, and how much needs you."""
+    if ctx.invoked_subcommand:
+        return
+    from datetime import datetime
+
+    from . import heartbeat, needs_you, updater
+    from .run import status as run_status
+
+    hb = heartbeat.read_state()
+    up = heartbeat.alive(hb)
+    dash = settings.focos().get("dashboard") or {}
+    typer.echo(f"focos {updater.installed_version()}: " + (
+        f"running since {str(hb.get('since', ''))[:16].replace('T', ' ')}, dashboard http://localhost:{dash.get('port') or 3100}"
+        if up else "NOT RUNNING. Start it with `focos service start` (it also starts at login)."))
+    if hb.get("running"):
+        typer.echo(f"  now running: {hb['running'].get('key')} (since {str(hb['running'].get('started'))[11:16]})")
+    nxt = hb.get("next") or []
+    if nxt:
+        def _fmt(r):
+            at = datetime.fromisoformat(r["at"])
+            return f"{r['key']} {at:%a %H:%M}"
+        typer.echo("  next: " + ", ".join(_fmt(r) for r in nxt[:6]))
+    st = run_status.get() or {}
+    last = []
+    for mode in ("daily", "trade", "weekly", "monthly"):
+        e = st.get(mode) or {}
+        if e.get("started"):
+            ok = "ok" if e.get("ok") else ("running" if e.get("ok") is None and not e.get("finished") else "FAILED")
+            try:
+                when = datetime.fromisoformat(str(e["started"])).astimezone(settings.tz()).strftime("%a %H:%M")
+            except ValueError:
+                when = str(e.get("started"))[:16]
+            last.append(f"{mode} {ok} {when}")
+    if last:
+        typer.echo("  last: " + ", ".join(last))
+    try:
+        ny = needs_you.refresh()
+        n = ny["counts"]["items"]
+        typer.echo(f"  needs you: {n} item(s)" + (" (focos needs-you)" if n else ""))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @status_app.command("start")

@@ -185,6 +185,17 @@ def serve(with_dashboard: bool = True, with_api: bool = True, once: bool = False
                      t.cfg.get("market_open"), t.cfg.get("market_close"), settings.timezone_name())
     except Exception as e:  # noqa: BLE001  (never let this stop the dashboard from starting)
         log.info("intraday: off (%s)", e)
+    heart = None
+    try:
+        from .. import heartbeat
+
+        if heartbeat.enabled() and not once:
+            heart = heartbeat.Heartbeat()
+            log.info("heartbeat: running scheduled jobs from this process (version %s)", heart.state.get("version"))
+        else:
+            log.info("heartbeat: off (developer checkout, or FOCOS_HEARTBEAT=0); scheduled jobs will not run here")
+    except Exception as e:  # noqa: BLE001  (the dashboard must come up even if the scheduler cannot)
+        log.error("heartbeat: failed to start (%s)", e)
     reap_orphans()  # a previous supervisor may have been killed without releasing the dashboard's port
     for c in children:
         c.start()
@@ -195,6 +206,8 @@ def serve(with_dashboard: bool = True, with_api: bool = True, once: bool = False
             c.stop()
         _children_file().unlink(missing_ok=True)
         return 0
+    exit_code = 0
+    last_beat = 0.0
     try:
         while not stop.is_set():
             for c in children:
@@ -208,9 +221,19 @@ def serve(with_dashboard: bool = True, with_api: bool = True, once: bool = False
                         _record(children)
             if ticker is not None:
                 ticker.tick()
+            if heart is not None and time.time() - last_beat >= heartbeat.TICK_SECONDS:
+                last_beat = time.time()
+                try:
+                    heart.tick()
+                    if heart.restart_wanted():
+                        log.info("heartbeat: a newer version is installed; restarting onto it")
+                        exit_code = heartbeat.RESTART_EXIT
+                        break
+                except Exception as e:  # noqa: BLE001
+                    log.error("heartbeat: tick failed (%s)", e)
             stop.wait(2)
     finally:
         for c in children:
             c.stop()
         _children_file().unlink(missing_ok=True)
-    return 0
+    return exit_code

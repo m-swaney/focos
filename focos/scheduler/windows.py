@@ -35,7 +35,15 @@ def _quote(arg: str) -> str:
 
 def _trigger(job: Job, start: datetime) -> str:
     if job.schedule is None:
-        return f"<LogonTrigger><Enabled>true</Enabled><UserId>{escape(current_user())}</UserId></LogonTrigger>"
+        logon = f"<LogonTrigger><Enabled>true</Enabled><UserId>{escape(current_user())}</UserId></LogonTrigger>"
+        if not job.repeat_minutes:
+            return logon
+        # A watchdog: start again every N minutes. While the app runs, IgnoreNew makes each start a no-op; if it
+        # stopped (a crash, or exiting to restart onto a new version) it is back within N minutes.
+        boundary = start.replace(second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
+        return (logon + f"<TimeTrigger><StartBoundary>{boundary}</StartBoundary><Enabled>true</Enabled>"
+                f"<Repetition><Interval>PT{int(job.repeat_minutes)}M</Interval><StopAtDurationEnd>false</StopAtDurationEnd>"
+                f"</Repetition></TimeTrigger>")
     s = job.schedule
     boundary = start.replace(hour=s.hour, minute=s.minute, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
     if s.kind == "monthly":
@@ -94,8 +102,32 @@ class WindowsScheduler:
                 removed.append(n)
         return removed
 
+    def remove_per_job_tasks(self) -> list[str]:
+        """Stop and delete the one-task-per-job layout from before 0.4, including a dashboard still serving."""
+        from .base import LEGACY_JOB_NAMES
+
+        removed = []
+        for n in LEGACY_JOB_NAMES:
+            if _schtasks("/Query", "/TN", task_name(n)).returncode != 0:
+                continue
+            # Only the old dashboard is stopped: it holds the ports the app needs. Anything else still running
+            # (possibly the very update doing this install) is left to finish; deleting a task does not end it.
+            if n == "focos-dashboard":
+                _schtasks("/End", "/TN", task_name(n))
+            if _schtasks("/Delete", "/F", "/TN", task_name(n)).returncode == 0:
+                removed.append(n)
+        if removed:
+            try:
+                from ..service.supervisor import reap_orphans
+
+                reap_orphans()
+            except Exception:  # noqa: BLE001
+                pass
+        return removed
+
     def install(self, jobs: list[Job]) -> list[JobStatus]:
         self.remove_legacy()
+        self.last_removed = self.remove_per_job_tasks()
         out = []
         for job in jobs:
             with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False, encoding="utf-16") as f:
@@ -112,19 +144,19 @@ class WindowsScheduler:
         return out
 
     def uninstall(self, names: list[str] | None = None) -> list[str]:
-        from .base import JOB_NAMES
+        from .base import APP_JOB, LEGACY_JOB_NAMES
 
         removed = self.remove_legacy()
-        for n in names or list(JOB_NAMES.values()):
+        for n in names or [APP_JOB] + LEGACY_JOB_NAMES:
             if _schtasks("/Delete", "/F", "/TN", task_name(n)).returncode == 0:
                 removed.append(n)
         return removed
 
     def status(self, names: list[str] | None = None) -> list[JobStatus]:
-        from .base import JOB_NAMES
+        from .base import APP_JOB
 
         out = []
-        for n in names or list(JOB_NAMES.values()):
+        for n in names or [APP_JOB]:
             r = _schtasks("/Query", "/TN", task_name(n), "/FO", "CSV", "/V")
             if r.returncode != 0:
                 out.append(JobStatus(name=n, installed=False))

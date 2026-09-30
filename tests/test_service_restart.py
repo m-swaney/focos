@@ -1,11 +1,16 @@
-"""An update must leave the new version serving: `service install` stops the running instance before it starts
-the new one, because Task Scheduler ignores a start while an instance is still running."""
+"""One app, one OS task: installing registers only the app (removing the per-job tasks), starting is a no-op
+while it runs, and an update is picked up by the app restarting itself."""
+import sys
+from datetime import datetime
 from pathlib import Path
 
-from typer.testing import CliRunner
+from focos import scheduler
+from focos.scheduler import launchd, windows
 
 
 class FakeScheduler:
+    platform = "fake"
+
     def __init__(self):
         self.calls = []
 
@@ -16,39 +21,45 @@ class FakeScheduler:
     def install(self, jobs):
         from focos.scheduler.base import JobStatus
 
-        self.calls.append(("install", jobs[0].name))
+        self.calls.append(("install", [j.name for j in jobs]))
         return [JobStatus(name=jobs[0].name, installed=True)]
 
     def start(self, name):
         self.calls.append(("start", name))
         return True
 
+    def status(self, names=None):
+        from focos.scheduler.base import JobStatus
 
-def test_service_install_restarts_instead_of_leaving_the_old_one(initialized_home: Path, monkeypatch):
-    from focos import cli, scheduler
-    from focos.service import supervisor
-
-    fake = FakeScheduler()
-    monkeypatch.setattr(scheduler, "current", lambda: fake)
-    monkeypatch.setattr(supervisor, "reap_orphans", lambda: [])
-    monkeypatch.setattr(cli, "_wait_ports_free", lambda timeout_s=20.0: True)
-    r = CliRunner().invoke(cli.app, ["service", "install"])
-    assert r.exit_code == 0, r.output
-    assert [c[0] for c in fake.calls] == ["stop", "install", "start"]
+        return [JobStatus(name=n, installed=True) for n in (names or [scheduler.APP_JOB])]
 
 
-def test_install_without_start_does_not_touch_the_running_service(initialized_home: Path, monkeypatch):
-    from focos import cli, scheduler
+def test_install_registers_only_the_app_and_never_stops_it(initialized_home: Path, monkeypatch):
+    from focos import updater
 
     fake = FakeScheduler()
     monkeypatch.setattr(scheduler, "current", lambda: fake)
-    r = CliRunner().invoke(cli.app, ["service", "install", "--no-start"])
-    assert r.exit_code == 0, r.output
-    assert [c[0] for c in fake.calls] == ["install"]
+    monkeypatch.setattr(updater, "write_shims", lambda log=print: [])
+    out = scheduler.install_app()
+    assert fake.calls == [("install", ["focos"]), ("start", "focos")]
+    assert out["started"] is True
 
 
-def test_auto_update_warns_when_the_old_dashboard_keeps_serving(initialized_home: Path, monkeypatch,
-                                                                _no_real_notifications):
+def test_the_app_task_is_a_logon_start_with_a_watchdog(initialized_home: Path):
+    job = scheduler.app_job()
+    assert scheduler.os_jobs() == [job]
+    assert job.argv[-2:] == ["serve", "--with-dashboard"] and job.keep_alive and job.repeat_minutes == 1
+    xml = windows.task_xml(job, start=datetime(2026, 10, 1, 9, 0), user="BOX\\ann")
+    assert "<LogonTrigger>" in xml and "<Interval>PT1M</Interval>" in xml
+    assert "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" in xml
+    assert "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>" in xml and "<WakeToRun>false</WakeToRun>" in xml
+    plist = launchd.plist_dict(job)
+    assert plist["RunAtLoad"] is True and plist["KeepAlive"] is True
+    assert "focos-dashboard" in scheduler.LEGACY_JOB_NAMES and "focos-trade-1" in scheduler.LEGACY_JOB_NAMES
+
+
+def test_auto_update_warns_when_the_old_version_keeps_running(initialized_home: Path, monkeypatch,
+                                                              _no_real_notifications):
     from focos import updater
 
     monkeypatch.setattr(updater, "is_dev_checkout", lambda app=None: False)
@@ -56,4 +67,18 @@ def test_auto_update_warns_when_the_old_dashboard_keeps_serving(initialized_home
     monkeypatch.setattr(updater, "update", lambda repo=None, log=print: {"updated": True, "available": "v9.9.9",
                                                                         "service_version": "9.9.8"})
     updater.auto_update()
-    assert any("still on the old version" in n["title"] for n in _no_real_notifications)
+    assert any("still running the old version" in n["title"] for n in _no_real_notifications)
+
+
+def test_shims_include_one_for_git_bash(tmp_path: Path, monkeypatch):
+    from focos import updater
+
+    monkeypatch.setattr(updater, "base_dir", lambda: tmp_path)
+    written = updater.write_shims(log=lambda m: None)
+    if sys.platform != "win32":
+        assert written == []
+        return
+    sh = (tmp_path / "bin" / "focos").read_text(encoding="utf-8")
+    assert sh.startswith("#!/bin/sh") and "app.txt" in sh and '-m focos "$@"' in sh and "\r" not in sh
+    assert (tmp_path / "bin" / "focos.cmd").exists()
+    assert updater.write_shims(log=lambda m: None) == []      # unchanged on a second run

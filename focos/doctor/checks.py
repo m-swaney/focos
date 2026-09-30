@@ -129,26 +129,25 @@ def run_all() -> list[Check]:
                      severity="warn", title="Last daily run",
                      detail=(f"{'ok' if daily.get('ok') else 'failed: ' + str(daily.get('error') or '')[:120]} {age:.0f}h ago" if daily and age is not None else "no runs yet"),
                      fix="Run `focos run --mode daily` and read state/logs/<date>-daily-run.log.", fix_action="run_daily"))
-    # scheduler + service
-    from .. import scheduler
+    # the app: one OS task, and the heartbeat inside it that runs every scheduled job
+    from .. import heartbeat, scheduler
     sch = scheduler.current()
-    jobs = {s.name: s for s in sch.status()}
-    daily_job = jobs.get(scheduler.JOB_NAMES["daily"])
-    out.append(Check(id="schedule", ok=bool(daily_job and daily_job.installed), severity="warn", title=f"Scheduled runs ({sch.platform})",
-                     detail=(f"next {daily_job.next_run}" if daily_job and daily_job.installed else "not installed"),
-                     fix="Run `focos schedule install` (Setup > Schedule).", fix_action="reinstall_schedule"))
-    if any(j.key == "keepalive" for j in scheduler.run_jobs()):
-        ka_job = jobs.get(scheduler.JOB_NAMES["keepalive"])
-        out.append(Check(id="keepalive_job", ok=bool(ka_job and ka_job.installed), severity="warn", title="Robinhood keep-alive job",
-                         detail=(f"next {ka_job.next_run}" if ka_job and ka_job.installed else "not installed"),
-                         fix="Run `focos schedule install`.", fix_action="reinstall_schedule"))
+    app_task = next(iter(sch.status([scheduler.APP_JOB])), None)
+    out.append(Check(id="schedule", ok=bool(app_task and app_task.installed), severity="warn",
+                     title=f"focos starts at login ({sch.platform})",
+                     detail="installed" if app_task and app_task.installed else "not installed",
+                     fix="Run `focos schedule install`.", fix_action="reinstall_schedule"))
+    hb = heartbeat.read_state()
+    beating = heartbeat.alive(hb)
+    nxt = (hb.get("next") or [{}])[0]
+    out.append(Check(id="service", ok=beating, severity="warn", title="focos is running",
+                     detail=(f"version {hb.get('version')}, next: {nxt.get('key')} at {str(nxt.get('at', ''))[11:16]}"
+                             if beating else "not running: scheduled runs and the dashboard are stopped"),
+                     fix="Run `focos restart`."))
     legacy = getattr(sch, "legacy_present", None)
     if legacy and (names := legacy()):
         out.append(Check(id="legacy_tasks", ok=False, severity="warn", title="Old FOCOS scheduled tasks still registered",
                          detail=", ".join(names), fix="Run `focos schedule install`; it removes them."))
-    svc = jobs.get(scheduler.JOB_NAMES["service"])
-    out.append(Check(id="service", ok=bool(svc and svc.installed), severity="info", title="Dashboard service at login",
-                     detail="installed" if svc and svc.installed else "not installed", fix="Run `focos service install`."))
     # node / dashboard build
     from .. import intraday as intraday_mod
     if intraday_mod.enabled():
@@ -185,7 +184,7 @@ def fix(check_id: str) -> dict:
     """Automatable fixes the Health page can trigger."""
     if check_id in ("reinstall_schedule", "schedule"):
         from .. import scheduler
-        return {"ok": True, "result": [s.model_dump() for s in scheduler.current().install(scheduler.run_jobs())]}
+        return {"ok": True, "result": scheduler.install_app()}
     if check_id in ("refresh_ledger", "ledger", "ledger_fresh"):
         from datetime import date
         from ..ledger import providers

@@ -31,7 +31,7 @@ def step_status() -> dict[str, str]:
     profile_done = bool((prof.get("owner") or {}).get("name"))
     from ... import scheduler
 
-    sched = scheduler.current().status([scheduler.JOB_NAMES["daily"]])[0].installed
+    sched = scheduler.current().status([scheduler.APP_JOB])[0].installed
     from ...run import status as run_status
 
     ran = bool(run_status.get().get("daily"))
