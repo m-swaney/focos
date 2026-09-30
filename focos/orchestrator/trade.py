@@ -263,6 +263,12 @@ def run_pass(date: str | None = None, now: datetime | None = None, force: bool =
         error = f"required exit not placed: {', '.join(missed)}"
         summary = f"{error}; {summary}"
     status.finish(MODE, res.ok, error, summary, None, res.commit)
+    try:
+        from .. import needs_you
+
+        needs_you.refresh(date)
+    except Exception:  # noqa: BLE001
+        pass
     log.info("trading pass %s finished ok=%s (%s)", run_id, res.ok, summary)
     return res
 

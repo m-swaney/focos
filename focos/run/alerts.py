@@ -9,7 +9,8 @@ def _a(sev: str, code: str, text: str, **data) -> dict:
 
 
 def build(snapshot: dict, portfolio: dict, profile: dict, catalysts: dict, history: list[dict],
-          tax_lots: dict | None = None, ledger_ok: bool | None = None, consolidated: dict | None = None) -> list[dict]:
+          tax_lots: dict | None = None, ledger_ok: bool | None = None, consolidated: dict | None = None,
+          plan: dict | None = None) -> list[dict]:
     alerts: list[dict] = []
     risk = profile.get("risk") or {}
     max_single = float(risk.get("max_single_stock_weight_pct") or 20) / 100
@@ -69,7 +70,8 @@ def build(snapshot: dict, portfolio: dict, profile: dict, catalysts: dict, histo
     if portfolio.get("meta", {}).get("prices_stale"):
         alerts.append(_a("warn", "prices_stale", "Yahoo Finance failed; risk stats use cached prices"))
     if snapshot.get("notes"):
-        alerts.append(_a("warn", "snapshot_notes", f"Snapshot notes: {snapshot['notes'][:200]}"))
+        # What the extraction step could not fetch. Worth seeing, not worth acting on.
+        alerts.append(_a("info", "snapshot_notes", f"Snapshot notes: {snapshot['notes'][:200]}"))
     if ledger_ok is False:
         alerts.append(_a("warn", "ledger_unavailable", "Bank ledger unavailable this run; entity and cash sections are stale"))
     if consolidated and consolidated.get("available"):
@@ -81,8 +83,18 @@ def build(snapshot: dict, portfolio: dict, profile: dict, catalysts: dict, histo
             alerts.append(_a("warn", "unmatched_transfers", f"{len(um)} transfer-looking transaction(s) in the last 30 days have no matching leg; review in the weekly brief"))
         cash_policy = profile.get("cash_policy") or {}
         runway = consolidated.get("personal_runway_months")
-        if runway is not None and cash_policy.get("emergency_fund_months") and runway < float(cash_policy["emergency_fund_months"]):
-            alerts.append(_a("warn", "emergency_fund", f"Personal cash covers {runway:.1f} months of core expenses (target {cash_policy['emergency_fund_months']})"))
+        target = float(cash_policy.get("emergency_fund_months") or 0)
+        if runway is not None and target and runway < target:
+            ef = (plan or {}).get("emergency_fund") or {}
+            incl = ef.get("months_covered_incl_business")
+            if ef.get("business_cash_is_reserve") and incl is not None and incl >= target:
+                # The household decided business cash is the reserve; low personal cash is then a fact, not a task.
+                alerts.append(_a("info", "emergency_fund", f"Personal cash covers {runway:.1f} months of core expenses; "
+                                 f"{incl:.1f} counting business cash, which your cash policy treats as the reserve "
+                                 f"(target {target:g})"))
+            else:
+                alerts.append(_a("warn", "emergency_fund", f"Personal cash covers {runway:.1f} months of core expenses "
+                                 f"(target {target:g})"))
 
     # profile completeness
     person = profile.get("owner") or profile.get("person") or {}

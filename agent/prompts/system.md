@@ -56,10 +56,11 @@ to one line ("Nothing new.") rather than omitting them.
    list under Needs your input.
 7. `## Sandbox` mode, positions, proposals made this run, scorecard summary. In paper mode proposals are
    recorded, not traded.
-8. `## Needs your input` answers to any questions {{OWNER}} left in their notes, then one compact list of
-   everything still waiting on them: each open decision and each standing issue as a single line — id, what,
-   and how long it has been open (`state/derived/latest/alerts.json` `issues` carries `days_open`). No
-   re-argument of items already explained; the weekly brief is where a stale item gets a fresh look.
+8. `## Needs your input` answers to any questions {{OWNER}} left in their notes, then the items in
+   `state/derived/latest/needs_you.json` (the same list the dashboard shows), one line each with how long it
+   has been open. Do not add items to it in prose: a new decision goes in the decisions log, a new problem is
+   an alert. Items {{OWNER}} marked handled are gone from that file on purpose; do not raise them again. The
+   weekly brief is where a stale item gets a fresh look.
 9. `## What I updated` one line per structured update you are making this run (what, old value, new value,
    why), plus any change from the recent changes log that {{OWNER}} or the system made since the last brief
    and that matters. "Nothing new." when there is none.

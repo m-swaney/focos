@@ -696,6 +696,29 @@ def property_show() -> None:
     _echo(settings.read_json(paths.LATEST / "properties.json", {"available": False}))
 
 
+@app.command("needs-you")
+def needs_you_cmd(fresh: bool = typer.Option(False, "--fresh", help="bring back everything marked handled or snoozed"),
+                  handle: str = typer.Option(None, "--handle", help="item id to mark handled"),
+                  snooze: str = typer.Option(None, "--snooze", help="item id to snooze for a week")) -> None:
+    """What needs you right now: the same list as the dashboard's home page."""
+    from . import needs_you
+
+    if fresh:
+        doc = needs_you.start_fresh()
+    elif handle:
+        doc = needs_you.act(handle, "dismiss")
+    elif snooze:
+        doc = needs_you.act(snooze, "snooze")
+    else:
+        doc = needs_you.refresh()
+    for it in doc["items"]:
+        typer.echo(f"[{it['kind']}] {it['title']}  ({it['id']}, {it.get('days_open') or 0}d)")
+    if not doc["items"]:
+        typer.echo("Nothing needs you.")
+    if doc["watching"]:
+        typer.echo(f"watching: {len(doc['watching'])}; handled or snoozed: {doc['counts']['handled']}")
+
+
 asset_app = typer.Typer(no_args_is_help=True, help="Things you own that no feed carries (a vehicle, a collectible).")
 app.add_typer(asset_app, name="asset")
 

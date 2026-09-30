@@ -64,6 +64,7 @@ diagnostics zip you can share when asking for help.
 
 ```
 focos run --mode daily          # one full cycle now
+focos needs-you                 # what is waiting on you (the dashboard's home list); --handle <id>, --snooze <id>
 focos note "the withholding is fixed"   # tell your chief of staff something; read on the next run
 focos done goal <id>            # mark a goal done (also: done tax <id>, done decision <id>, reopen goal <id>)
 focos changes                   # what changed in goals, agenda, spending, decisions, and who changed it
@@ -80,7 +81,10 @@ focos asset add "2019 pickup truck" --value 21000   # something you own that no 
 focos update                    # install the newest release (the nightly job does this for you)
 ```
 
-The dashboard has the same controls: a note box and reply buttons on the home page, Done buttons on the Plan
+The home page's **Needs you** list holds only what needs a person: a login, a decision, an approval, a note
+focos could not act on. Every item has its own way out (Done / Keep as is / Drop for decisions, Handled or
+Snooze for the rest), and things to keep an eye on sit under a collapsed "Watching". The dashboard also has a
+note box and reply buttons on the home page, Done buttons on the Plan
 page (goals, CPA agenda) and the Briefs page (decisions), and category pickers on the Wealth page. Every change
 is logged to `state/changes.jsonl`, shown under "Recent updates", and reported by the next brief under
 "What I updated".

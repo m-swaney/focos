@@ -99,7 +99,8 @@ def run(mode: str, date: str | None = None, heavy: bool | None = None, bump: boo
     from .run import attention
     all_alerts = (alerts_mod.build(cur, outputs["portfolio.json"] if has_holdings else {}, settings.profile_v2(),
                                    outputs["catalysts.json"], history, outputs.get("tax_lots.json") if has_holdings else None,
-                                   ledger_ok=ledger["ok"], consolidated=outputs["consolidated.json"]) + token_alerts
+                                   ledger_ok=ledger["ok"], consolidated=outputs["consolidated.json"],
+                                   plan=outputs.get("plan.json")) + token_alerts
                   + attention.build(cur if has_holdings else None, outputs["consolidated.json"], date))
     try:
         from . import notify
@@ -138,6 +139,12 @@ def run(mode: str, date: str | None = None, heavy: bool | None = None, bump: boo
     for name, obj in outputs.items():
         settings.write_json(day_dir / name, obj)
         settings.write_json(paths.LATEST / name, obj)
+    try:
+        from . import needs_you
+
+        needs_you.refresh(date)
+    except Exception:  # noqa: BLE001 -- the dashboard list must never fail a run
+        pass
     for art in ("correlation.png", "tearsheet.html"):
         src = tearsheet_dir / art
         if src.exists():

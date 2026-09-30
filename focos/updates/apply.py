@@ -265,6 +265,13 @@ def apply(updates: list[dict] | None, *, actor: str, run: str, date: str | None 
         if rec["ok"] and upd.source_note_id:
             inbox.resolve(upd.source_note_id, "applied", describe(rec))
         out.append(rec)
+    if any(r.get("ok") for r in out):
+        try:
+            from .. import needs_you
+
+            needs_you.refresh()
+        except Exception:  # noqa: BLE001
+            pass
     return out
 
 

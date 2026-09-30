@@ -10,6 +10,7 @@ import type {
   Diff,
   Drift,
   Entities,
+  NeedsYou,
   Optimizer,
   Plan,
   Portfolio,
@@ -37,6 +38,7 @@ export const taxLots = () => latest<TaxLots>("tax_lots.json");
 export const alerts = () => latest<Alerts>("alerts.json");
 export const briefResult = () => latest<BriefResult>("brief_result.json");
 export const catalysts = () => latest<Catalysts>("catalysts.json");
+export const needsYou = () => latest<NeedsYou>("needs_you.json");
 
 export const ASSET_NAMES = ["tearsheet.html", "correlation.png"] as const;
 export type AssetName = (typeof ASSET_NAMES)[number];

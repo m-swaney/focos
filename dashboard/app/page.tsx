@@ -1,50 +1,23 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { NetWorthChart } from "@/components/charts/NetWorthChart";
 import type { AreaPoint, ChartSeries } from "@/components/charts/StackedAreaChart";
 import { NoteBox } from "@/components/inbox/NoteBox";
-import { ApproveButton } from "@/components/SandboxControls";
+import { ItemActions, StartFresh } from "@/components/inbox/ItemActions";
 import { Card, CardLink, Chip, Empty, EntityDot, Meter, PageHeader, Severity, Symbol } from "@/components/ui";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { ShowMore } from "@/components/ui/ShowMore";
-import { briefSectionMatching, briefText } from "@/lib/data/briefs";
-import { ACTOR_LABEL, describeChange, pendingNotes, recentChanges, unaddressedNotes } from "@/lib/data/changes";
+import { ACTOR_LABEL, describeChange, pendingNotes, recentChanges } from "@/lib/data/changes";
 import { intradayView } from "@/lib/data/intraday";
-import { alerts, briefResult, catalysts, consolidated, diff, entitiesData, plan, portfolio, sandbox } from "@/lib/data/latest";
+import { alerts, briefResult, catalysts, consolidated, diff, entitiesData, needsYou, plan, portfolio, sandbox } from "@/lib/data/latest";
 import { series } from "@/lib/data/series";
 import { health } from "@/lib/data/status";
 import { clean, dateLong, dateShort, money, num, pct, plural, relTime, signed, timeShort, tone } from "@/lib/format";
 import { accountLabel, entities, entity, seriesVar } from "@/lib/labels";
-import type { LedgerAccount, Severity as Sev } from "@/lib/types";
+import type { LedgerAccount, NeedsYouItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const OWNER: Record<string, string> = {
-  emergency_fund: "/wealth",
-  unmatched_transfers: "/wealth",
-  unmapped_accounts: "/wealth",
-  ledger_unavailable: "/wealth",
-  concentration: "/portfolio",
-  look_through: "/portfolio",
-  sector: "/portfolio",
-  drawdown: "/portfolio",
-  earnings: "/portfolio",
-  lt_crossing: "/portfolio",
-  prices_stale: "/portfolio",
-  sandbox_unfunded: "/sandbox",
-  profile_incomplete: "/plan",
-  sandbox_stop_breached: "/sandbox",
-  sandbox_unmanaged: "/sandbox",
-  feed_auth: "/wealth",
-  decisions_waiting: "/plan",
-  app_issue: "/health",
-  claude_login_expiring: "/health",
-  robinhood_login_expired: "/health",
-  robinhood_not_connected: "/health",
-  robinhood_access_expired: "/health",
-};
 const PAGE_NAME: Record<string, string> = {
   "/wealth": "Wealth",
   "/portfolio": "Portfolio",
@@ -53,29 +26,21 @@ const PAGE_NAME: Record<string, string> = {
   "/health": "Health",
 };
 
-interface Item {
-  sev: Sev | "question" | "approve";
-  text: ReactNode;
-  source: string;
-  href?: string;
-  action?: ReactNode;
+function KindMark({ item }: { item: NeedsYouItem }) {
+  const label = (icon: IconName, text: string, cls: string) => (
+    <span className={`inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide ${cls}`}>
+      <Icon name={icon} size={13} /> {text}
+    </span>
+  );
+  if (item.kind === "approve") return label("clock", "Approve", "text-warn");
+  if (item.kind === "decide") return label("question", "Decide", item.severity === "warn" ? "text-warn" : "text-secondary");
+  return <Severity s={item.severity} />;
 }
-const ORDER: Record<Item["sev"], number> = { approve: 0, critical: 1, warn: 2, question: 3, info: 4 };
 
-function ItemMark({ sev }: { sev: Item["sev"] }) {
-  if (sev === "question")
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-secondary">
-        <Icon name="question" size={13} /> Ask
-      </span>
-    );
-  if (sev === "approve")
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-warn">
-        <Icon name="clock" size={13} /> Approve
-      </span>
-    );
-  return <Severity s={sev} />;
+function ageText(it: NeedsYouItem): string {
+  const d = it.days_open ?? 0;
+  if (it.kind === "decide") return d >= 1 ? `waiting ${plural(d, "day")}` : "new today";
+  return d >= 1 ? `open ${plural(d, "day")}` : "new";
 }
 
 const TYPE_GROUPS: { key: string; label: string; types: string[]; liability?: boolean }[] = [
@@ -107,59 +72,14 @@ export default function Today() {
   const live = iv?.usable ? iv.data : null;
   const date = live?.asof?.slice(0, 10) ?? br?.date ?? pf?.meta.asof ?? null;
   const briefIsOlder = !!(live && br?.date && date && br.date < date);
-  const md = br ? briefText(br.mode ?? "daily", br.date) : null;
-  const actions = briefSectionMatching(md, /^##\s+Actions( for .+)?\s*$/m);
-  const actionsMeaningful = actions && !/^(none|nothing)\b/i.test(actions.replace(/[*_`]/g, "").trim());
-
-  // Needs you.
-  const items: Item[] = [];
-  for (const p of sb?.proposals ?? []) {
-    if (p.paper || p.approved) continue;
-    items.push({
-      sev: "approve",
-      text: (
-        <>
-          <Symbol>
-            {p.side.toUpperCase()} {p.symbol}
-          </Symbol>{" "}
-          {money(p.dollar_amount)}
-          {p.thesis ? <span className="text-secondary"> {p.thesis}</span> : null}
-        </>
-      ),
-      source: p.ref_id,
-      href: "/sandbox",
-      action: <ApproveButton refId={p.ref_id} approved={!!p.approved} />,
-    });
-  }
-  for (const q of br?.needs_user ?? [])
-    items.push({
-      sev: "question",
-      text: clean(q),
-      source: "brief",
-      href: br ? `/briefs/${br.mode ?? "daily"}/${br.date}` : undefined,
-      action: <NoteBox compact about={{ type: "question", id: q.slice(0, 120) }} placeholder="Your answer" />,
-    });
-  for (const n of unaddressedNotes())
-    items.push({ sev: "warn", text: <>Your note from {dateShort(n.ts)} was not addressed: {clean(n.text)}</>, source: "note" });
+  // Needs you: one list built in code (focos/needs_you.py), each item with its own way out. The brief's prose and
+  // FYI alerts are not tasks; the first lives in the brief, the second under "Watching".
+  const ny = needsYou();
+  const items = ny?.items ?? [];
+  const watching = ny?.watching ?? [];
+  const approvals = items.filter((i) => i.kind === "approve").length;
   const waiting = pendingNotes();
   const updates = recentChanges(8);
-  const seen = new Set<string>();
-  const key = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, "").slice(0, 48);
-  const issueFor = (a: { code: string; data?: Record<string, unknown> }) => {
-    const sym = typeof a.data?.symbol === "string" ? `:${a.data.symbol}` : "";
-    return al?.issues?.[`${a.code}${sym}`] ?? al?.issues?.[a.code];
-  };
-  for (const a of al?.alerts ?? []) {
-    seen.add(key(a.text));
-    const days = issueFor(a)?.days_open ?? 0;
-    const since = days >= 2 ? ` (open ${days} days)` : "";
-    items.push({ sev: a.severity, text: clean(a.text) + since, source: a.code.replace(/_/g, " "), href: OWNER[a.code] });
-  }
-  for (const a of br?.alerts ?? []) {
-    if (seen.has(key(a.text))) continue;
-    items.push({ sev: a.severity, text: clean(a.text), source: "brief" });
-  }
-  items.sort((a, b) => ORDER[a.sev] - ORDER[b.sev]);
 
   // Net worth. Between daily runs the service re-prices the same holdings from delayed quotes, so prefer those
   // marks when they are fresh and say so; the broker's own totals are the headline right after a run.
@@ -208,7 +128,6 @@ export default function Today() {
 
   const ef = pl?.emergency_fund;
   const ret = pl?.retirement;
-  const pending = (sb?.proposals ?? []).filter((p) => !p.paper && !p.approved).length;
 
   return (
     <>
@@ -225,34 +144,61 @@ export default function Today() {
 
       <div className="grid grid-cols-12 gap-4">
         {/* Row 1: attention and headline */}
-        <Card title="Needs you" meta={items.length ? plural(items.length, "item") : "clear"} className="col-span-12 md:col-span-7 3xl:col-span-4" padded={false}>
+        <Card title="Needs you" meta={items.length ? plural(items.length, "item") : "all clear"} className="col-span-12 md:col-span-7 3xl:col-span-4" padded={false}>
           {items.length ? (
             <ul className="divide-y divide-hairline">
-              {items.map((it, i) => (
-                <li key={i} className="flex flex-wrap items-start gap-x-3 gap-y-2 px-4 py-3">
-                  <div className="w-[76px] shrink-0 pt-0.5">
-                    <ItemMark sev={it.sev} />
+              {items.map((it) => (
+                <li key={it.id} className="flex items-start gap-3 px-4 py-3">
+                  <div className="w-[70px] shrink-0 pt-0.5">
+                    <KindMark item={it} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] leading-snug">{it.text}</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] text-muted">
-                      <span>{it.source}</span>
+                    <div className="text-[12.5px] font-medium leading-snug">
+                      {clean(it.title)}
+                      {it.kind === "approve" && it.amount ? <span className="font-normal text-secondary"> {money(it.amount)}</span> : null}
+                    </div>
+                    {it.detail && it.detail !== it.title ? (
+                      <div className="mt-0.5 text-[12px] leading-snug text-secondary">{clean(it.detail)}</div>
+                    ) : null}
+                    {it.how ? <div className="mt-0.5 text-[11.5px] leading-snug text-muted">{it.how}</div> : null}
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      <ItemActions item={it} />
+                      <span className="text-[11px] text-muted">{ageText(it)}</span>
                       {it.href ? (
-                        <Link href={it.href} className="inline-flex items-center gap-1 text-accent hover:underline">
-                          {PAGE_NAME[it.href] ?? "Brief"} <span aria-hidden>&gt;</span>
+                        <Link href={it.href} className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
+                          {PAGE_NAME[it.href] ?? "Open"} <span aria-hidden>&gt;</span>
                         </Link>
                       ) : null}
                     </div>
                   </div>
-                  {it.action ? <div className="shrink-0 basis-full pl-[88px] sm:basis-auto sm:pl-0">{it.action}</div> : null}
                 </li>
               ))}
             </ul>
           ) : (
             <p className="flex items-center gap-2 px-4 py-4 text-[12px] text-secondary">
-              <Icon name="check" size={14} className="text-gain" /> Nothing needs you today.
+              <Icon name="check" size={14} className="text-gain" /> Nothing needs you. focos will tell you when something does.
             </p>
           )}
+          {watching.length ? (
+            <details className="border-t border-hairline px-4 py-2.5">
+              <summary className="cursor-pointer select-none text-[11.5px] text-secondary">
+                Watching ({watching.length}), no action needed
+              </summary>
+              <ul className="mt-2 space-y-2">
+                {watching.map((w) => (
+                  <li key={w.id} className="flex items-start justify-between gap-3 text-[12px] leading-snug">
+                    <span className="text-secondary">{clean(w.title)}</span>
+                    <ItemActions item={w} />
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+          {ny?.counts.handled ? (
+            <div className="flex items-center gap-2 border-t border-hairline px-4 py-2 text-[11px] text-muted">
+              {plural(ny.counts.handled, "item")} handled or snoozed. <StartFresh />
+            </div>
+          ) : null}
           <div className="border-t border-hairline px-4 py-3">
             <div className="label mb-1">Tell your chief of staff</div>
             <p className="mb-2 text-[11px] text-muted">
@@ -261,14 +207,6 @@ export default function Today() {
             </p>
             <NoteBox />
           </div>
-          {actionsMeaningful ? (
-            <div className="border-t border-hairline px-4 py-3">
-              <div className="label mb-1">Actions from the brief</div>
-              <div className="md text-[12px]">
-                <Markdown remarkPlugins={[remarkGfm]}>{actions}</Markdown>
-              </div>
-            </div>
-          ) : null}
         </Card>
 
         <Card
@@ -608,7 +546,7 @@ export default function Today() {
               </div>
               <div className="flex items-baseline justify-between">
                 <span className="text-secondary">Awaiting approval</span>
-                <span className={pending ? "text-warn" : ""}>{pending}</span>
+                <span className={approvals ? "text-warn" : ""}>{approvals}</span>
               </div>
             </div>
           ) : (

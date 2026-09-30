@@ -10,6 +10,7 @@ Read these files first (paths are relative to the repo root):
 - `state/derived/latest/sandbox.json` (mode, positions, scorecard, run counter)
 - `state/derived/latest/consolidated.json` if it exists (entities and cash; absent until the ledger is live)
 - `state/derived/latest/inbox.json` (notes from {{OWNER}} for you, recent changes, open tax items, active goals)
+- `state/derived/latest/needs_you.json` (what is waiting on {{OWNER}}, with ages; the dashboard shows the same list)
 - The previous daily brief: `{{PREV_BRIEF}}` (may not exist)
 - The last 20 lines of `state/decisions.jsonl` (may not exist)
 

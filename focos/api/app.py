@@ -18,7 +18,7 @@ def _token() -> str | None:
 
 
 def create_app(token: str | None = None) -> FastAPI:
-    from .routes import ai, config, doctor, holdings, inbox, interview, ledger, run, schedule, setup, updates
+    from .routes import ai, config, doctor, holdings, inbox, interview, ledger, needs_you, run, schedule, setup, updates
 
     app = FastAPI(title="focos local api", docs_url=None, redoc_url=None, openapi_url=None)
     expected = token if token is not None else _token()
@@ -46,8 +46,14 @@ def create_app(token: str | None = None) -> FastAPI:
     def health():
         return {"ok": True, "home": str(paths.HOME)}
 
-    for r in (setup, ai, ledger, holdings, interview, config, schedule, run, doctor, inbox, updates):
+    for r in (setup, ai, ledger, holdings, interview, config, schedule, run, doctor, inbox, updates, needs_you):
         app.include_router(r.router)
+    try:  # the dashboard reads needs_you.json; after an update it should not wait for the next run to exist
+        from .. import needs_you as needs_you_mod
+
+        needs_you_mod.refresh()
+    except Exception:  # noqa: BLE001
+        pass
     return app
 
 

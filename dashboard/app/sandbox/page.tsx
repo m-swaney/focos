@@ -3,7 +3,7 @@ import { Chip, Empty, Figure, FigureStrip, Kv, Meter, PageHeader, Section, Statu
 import { Icon } from "@/components/ui/Icon";
 import { ShowMore } from "@/components/ui/ShowMore";
 import { gateLog } from "@/lib/data/briefs";
-import { sandbox } from "@/lib/data/latest";
+import { needsYou, sandbox } from "@/lib/data/latest";
 import { dateShort, dateTime, money, num, pct, plural, signed, tone } from "@/lib/format";
 import type { GateEntry } from "@/lib/types";
 
@@ -36,12 +36,15 @@ export default function SandboxPage() {
   const live = sc?.live;
   const account = sc?.account;
   const approvalsNeeded = Math.max(0, Number(sb.rules?.require_approval_first_n ?? 0) - (sb.live_orders ?? 0));
+  // Only proposals that really wait on the owner (approval required, written today, not yet placed) get a
+  // button; the rest are history. focos/needs_you.py decides, so this page and the home page agree.
+  const approvable = new Set((needsYou()?.items ?? []).filter((i) => i.kind === "approve").map((i) => i.ref_id));
   const proposals = [...(sb.proposals ?? [])].sort((a, b) => {
-    const pa = !a.paper && !a.approved ? 0 : 1;
-    const pb = !b.paper && !b.approved ? 0 : 1;
+    const pa = approvable.has(a.ref_id) ? 0 : 1;
+    const pb = approvable.has(b.ref_id) ? 0 : 1;
     return pa - pb || b.date.localeCompare(a.date);
   });
-  const pending = proposals.filter((p) => !p.paper && !p.approved).length;
+  const pending = approvable.size;
   const orders = acct.recent_orders ?? [];
   const positions = acct.positions ?? [];
   const modeLabel = sb.killed ? "Killed" : sb.mode === "live" ? "Live" : "Paper";
@@ -153,7 +156,13 @@ export default function SandboxPage() {
                     <td>
                       <Chip>{p.paper ? "paper" : "live"}</Chip>
                     </td>
-                    <td>{p.paper ? <span className="text-xs text-muted">not needed</span> : <ApproveButton refId={p.ref_id} approved={!!p.approved} />}</td>
+                    <td>
+                      {approvable.has(p.ref_id) || p.approved ? (
+                        <ApproveButton refId={p.ref_id} approved={!!p.approved} />
+                      ) : (
+                        <span className="text-xs text-muted">not needed</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

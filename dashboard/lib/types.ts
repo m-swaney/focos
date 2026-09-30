@@ -452,6 +452,33 @@ export interface Issue {
   notified_on?: string | null;
 }
 
+/** state/derived/latest/needs_you.json (focos/needs_you.py): the one list of things that need the owner. */
+export interface NeedsYouItem {
+  id: string;
+  kind: "do" | "decide" | "approve" | "watch";
+  severity: Severity;
+  source: string;
+  title: string;
+  detail?: string | null;
+  how?: string | null;
+  href?: string | null;
+  since?: string | null;
+  days_open?: number;
+  review_on?: string | null;
+  decision_id?: string;
+  ref_id?: string;
+  amount?: number | null;
+  actions: string[];
+}
+
+export interface NeedsYou {
+  asof: string;
+  date: string;
+  items: NeedsYouItem[];
+  watching: NeedsYouItem[];
+  counts: { items: number; watching: number; handled: number };
+}
+
 export interface Alerts {
   date: string;
   alerts: Alert[];

@@ -77,7 +77,7 @@ def send(title: str, body: str, severity: str = "warn", key: str | None = None, 
     """Send one notification on every enabled channel. `key` de-duplicates within a day."""
     c = cfg()
     today = _date.today().isoformat()
-    result = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "key": key, "severity": severity,
+    result = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "key": key, "severity": severity,
               "title": title, "channels": {}}
     if not c.get("enabled", True) and not force:
         result["skipped"] = "notify.enabled is false"
@@ -178,7 +178,13 @@ def sync_issues(alerts: list[dict], today: str | None = None, push: bool = True)
                  "first_seen": prev.get("first_seen") or today, "last_seen": today,
                  "notified_on": prev.get("notified_on")}
         entry["days_open"] = (_date.fromisoformat(today) - _date.fromisoformat(entry["first_seen"])).days
-        due = code in PUSH_CODES and (not entry["notified_on"] or (
+        try:
+            from . import needs_you
+
+            handled = needs_you.is_hidden(key, str(a.get("severity")), today)
+        except Exception:  # noqa: BLE001
+            handled = False
+        due = code in PUSH_CODES and not handled and (not entry["notified_on"] or (
             _date.fromisoformat(today) - _date.fromisoformat(entry["notified_on"]) >= timedelta(days=REMIND_AFTER_DAYS)))
         if push and due:
             suffix = f" (open {entry['days_open']} days)" if entry["days_open"] else ""
