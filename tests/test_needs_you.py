@@ -23,6 +23,7 @@ def test_only_actionable_alerts_are_tasks(initialized_home: Path):
         {"severity": "warn", "code": "feed_auth", "text": "Example Bank needs you to sign in again"},
         {"severity": "warn", "code": "concentration", "text": "ABC is 31% of the taxable account"},
         {"severity": "info", "code": "emergency_fund", "text": "Personal cash covers 0.5 months"},
+        {"severity": "info", "code": "decisions_waiting", "text": "2 recommendation(s) waiting on you"},
     ], issues={"feed_auth": {"first_seen": "2026-09-14", "days_open": 16}})
     doc = needs_you.build("2026-09-30")
     assert [i["source"] for i in doc["items"]] == ["feed_auth"]

@@ -50,6 +50,10 @@ ACTIONABLE = {
 }
 
 
+# Alerts that summarise something this list already shows item by item.
+LISTED_ELSEWHERE = {"decisions_waiting"}
+
+
 def state_file():
     return paths.STATE / "needs_you_state.json"
 
@@ -97,7 +101,7 @@ def _alert_items(today: str) -> tuple[list[dict], list[dict]]:
         code = str(a.get("code") or "alert")
         sym = (a.get("data") or {}).get("symbol") if isinstance(a.get("data"), dict) else None
         key = f"{code}:{sym}" if sym else code
-        if key in seen:
+        if key in seen or code in LISTED_ELSEWHERE:
             continue
         seen.add(key)
         issue = issues.get(key) or issues.get(code) or {}
