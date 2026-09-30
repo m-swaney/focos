@@ -143,17 +143,6 @@ def run(opts: RunOptions) -> RunResult:
             _notify_failed(opts.mode, date, f"holdings: {msg}")
             return res
 
-    # ---- monthly: revalue real estate and manual assets before the pipeline reads net worth. properties.yml has
-    # promised this since the cutover; nothing called it.
-    if opts.mode == "monthly" and not opts.skip_b:
-        try:
-            from ..ledger import properties
-
-            pr = properties.refresh(date)
-            log.info("properties: %d valued, total %s", len(pr.get("properties") or []), pr.get("total_value"))
-        except Exception as e:  # noqa: BLE001
-            log.warning("property refresh skipped: %s", e)
-
     # ---- Stage B: pipeline
     if opts.skip_b:
         log.info("Stage B skipped")

@@ -35,11 +35,14 @@ def sandbox_alerts(snapshot: dict | None, today: str) -> list[dict]:
 
 def feed_alerts(consolidated: dict | None) -> list[dict]:
     pull = (consolidated or {}).get("pull") or {}
+    by_hand = {str(o).lower() for o in (consolidated or {}).get("manually_tracked") or []}
     out = []
     for err in pull.get("errors") or []:
         text = str(err)
         if any(k in text.lower() for k in ("auth", "attention", "reconnect", "credential")):
             name = text.split("Connection to ", 1)[-1].split(" may", 1)[0] if "Connection to " in text else "a bank"
+            if name.lower() in by_hand:
+                continue      # its balances come from `focos ledger set-balance`; nothing to reconnect
             out.append(_a("warn", "feed_auth", f"{name} needs you to sign in again in SimpleFIN Bridge "
                           f"(https://bridge.simplefin.org); until then its balances are stale", feed=name))
     return out

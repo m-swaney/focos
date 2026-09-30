@@ -36,6 +36,16 @@ def run(snapshot: dict | None, asof: str, mode: str, trigger_sync: bool = True, 
 
         pull = provider.refresh(date.fromisoformat(asof), force=force_refresh)
 
+        # Loans kept by hand (a broken connection, a statement number): roll them through any payment dates.
+        projected, tracked = [], set()
+        try:
+            from . import manual_balance
+
+            projected = manual_balance.project(asof, provider)
+            tracked = manual_balance.tracked_institutions(provider)
+        except Exception:  # noqa: BLE001
+            pass
+
         # Monthly: refresh property values (Zillow/manual) before reading balances
         properties = None
         if mode == "monthly":
@@ -71,6 +81,9 @@ def run(snapshot: dict | None, asof: str, mode: str, trigger_sync: bool = True, 
         if categorize_out is not None:
             consolidated["categorize"] = {k: v for k, v in categorize_out.items() if k not in ("pending", "new_rules")}
         consolidated["pull"] = pull.model_dump() if pull else None
+        consolidated["manually_tracked"] = sorted(tracked)
+        if projected:
+            consolidated["projected_balances"] = projected
         if properties is not None:
             consolidated["properties_refresh"] = properties
         return {"ok": True, "provider": provider.name, "consolidated": consolidated, "entities": entities,

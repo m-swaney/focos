@@ -192,6 +192,24 @@ def ledger_status() -> None:
     _echo({"provider": p.name, "health": p.health().model_dump(), "sync": p.sync_status().model_dump()})
 
 
+@ledger_app.command("set-balance")
+def ledger_set_balance(account: str = typer.Argument(..., help="account id, or part of its name or institution"),
+                       amount: float = typer.Argument(..., help="the balance (a loan's amount owed, as a positive number)"),
+                       as_of: str = typer.Option(None, "--as-of", help="YYYY-MM-DD (default today)"),
+                       rate: float = typer.Option(None, "--rate", help="loan: annual rate in percent, to keep it current"),
+                       payment: float = typer.Option(None, "--payment", help="loan: the amount paid each month"),
+                       day: int = typer.Option(None, "--day", help="loan: the day of the month it is paid")) -> None:
+    """Record a balance the feed does not have (a broken connection, a statement). With --rate/--payment/--day a
+    loan keeps itself current after each payment; a newer statement or a returning feed resets it."""
+    from . import manual_balance
+
+    try:
+        _echo(manual_balance.set_balance(account, amount, as_of, rate, payment, day))
+    except (ValueError, RuntimeError) as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(2)
+
+
 @ledger_app.command("manual")
 def ledger_manual(key: str = typer.Argument(...), name: str = typer.Option(...), balance: float = typer.Option(...),
                   entity: str = "personal", type_: str = typer.Option("other", "--type", help="depository | credit_card | loan | investment | property | vehicle | other"),
