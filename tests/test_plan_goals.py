@@ -90,3 +90,22 @@ def test_plan_accepts_v1_profile(initialized_home: Path):
     assert out["savings"]["income_breakdown"] == {"Business income": 100000}
     assert out["roth"]["contributed"] == 1000
     assert out["goals"][0]["kind"] == "retirement_contribution" and out["goals"][0]["funded"] == 1000
+
+
+def test_debt_terms_and_goals_match_the_institution_too():
+    """A feed names a loan generically and puts the lender in `institution`; matching the name alone lost the rate."""
+    from focos import plan
+
+    acct = {"name": "Home Equity Line of Credit", "institution": "Example Lender", "balance": -50000.0}
+    assert plan._label(acct) == "Home Equity Line of Credit Example Lender"
+    ctx = {"liabilities": [acct]}
+    tgt, funded = plan._goal_funded({"kind": "debt_payoff", "target_amount": 60000, "params": {"match": "EXAMPLE LENDER"}}, ctx)
+    assert (tgt, funded) == (60000, 10000.0)
+
+
+def test_a_goal_finds_its_loan_through_the_debt_terms():
+    from focos import plan
+
+    acct = {"name": "Home Equity Line of Credit", "institution": "Example Lender", "balance": -50000.0}
+    ctx = {"liabilities": [acct], "debt_terms": [{"match": "EXAMPLE LENDER|HELOC", "rate_pct": 9.9}]}
+    assert plan._goal_funded({"kind": "debt_payoff", "target_amount": 60000, "params": {"match": "HELOC"}}, ctx) == (60000, 10000.0)

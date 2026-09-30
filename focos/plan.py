@@ -30,6 +30,13 @@ def _num(x) -> float | None:
         return None
 
 
+def _label(a: dict) -> str:
+    """What a debt-term or goal `match` pattern is tested against: the account name and its institution. Feeds
+    often name a loan generically ("Home Equity Line of Credit", "Loan# (6456)") and put the lender only in the
+    institution, so matching the name alone silently dropped the rate and the goal."""
+    return " ".join(str(x) for x in (a.get("name"), a.get("institution")) if x)
+
+
 def _liability_accounts(entities: dict | None) -> list[dict]:
     out = []
     for ekey, e in ((entities or {}).get("entities") or {}).items():
@@ -61,7 +68,11 @@ def _goal_funded(goal: dict, ctx: dict) -> tuple[float | None, float | None]:
         bal = None
         if pat:
             for a in ctx["liabilities"]:
-                if re.search(str(pat), str(a.get("name") or ""), re.I):
+                # the account's own words, plus the pattern of the debt-terms entry that describes it: if the
+                # profile says FIGURE|HELOC is this loan, a goal about "HELOC" means this loan
+                label = _label(a) + "".join(f" {t['match']}" for t in ctx.get("debt_terms") or []
+                                            if t.get("match") and re.search(t["match"], _label(a), re.I))
+                if re.search(str(pat), label, re.I):
                     bal = abs(float(a.get("balance") or 0))
                     break
         if bal is not None:
@@ -176,13 +187,14 @@ def build(portfolio: dict | None, consolidated: dict | None, risk: dict | None, 
         for a in _liability_accounts(ents_used):
             if a.get("type") in ("loan", "Loan", "credit_card", "CreditCard"):
                 is_card = a.get("type") in ("credit_card", "CreditCard")
-                debts.append({"name": a.get("name"), "entity": a["entity"], "balance": a.get("balance"),
+                debts.append({"name": a.get("name"), "institution": a.get("institution"), "entity": a["entity"],
+                              "balance": a.get("balance"),
                               "rate_pct": 22.0 if is_card else None, "kind": "card" if is_card else "loan",
                               "min_payment": None, "source": "ledger"})
     # merge rate/term details from profile.debt_terms onto ledger-derived debts (regex on name)
     for d in debts:
         for term in prof.get("debt_terms") or []:
-            if term.get("match") and re.search(term["match"], str(d.get("name") or ""), re.I):
+            if term.get("match") and re.search(term["match"], _label(d), re.I):
                 for k, v in term.items():
                     if k != "match" and (d.get(k) is None or k in ("rate_pct", "rate_type", "min_payment", "note")):
                         d[k] = v
@@ -248,7 +260,8 @@ def build(portfolio: dict | None, consolidated: dict | None, risk: dict | None, 
 
     # --- goals
     ctx = {"cash": cash, "core": core, "target_months": target_m, "contributions": contributions,
-           "liabilities": _liability_accounts(ents_used) if (ents_used or entities) else []}
+           "liabilities": _liability_accounts(ents_used) if (ents_used or entities) else [],
+           "debt_terms": prof.get("debt_terms") or []}
     grows = []
     for g in (settings.goals_v2() or {}).get("goals") or []:
         tgt, funded = _goal_funded(g, ctx)
