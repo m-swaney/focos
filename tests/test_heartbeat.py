@@ -128,3 +128,17 @@ def test_every_job_in_the_table_has_a_schedule(initialized_home: Path):
     _cfg(initialized_home, {"holdings": {"source": "robinhood_mcp"}})
     keys = {j.key for j in scheduler.run_jobs()}
     assert {"daily", "weekly", "monthly", "trade1", "trade2", "trade3", "keepalive", "update"} <= keys
+
+
+def test_a_failed_update_is_retried_but_a_failed_brief_is_not(initialized_home: Path):
+    _cfg(initialized_home)
+    t = "2026-09-30T05:15:10-04:00"
+    state = {"jobs": {"update": {"started": t, "exit": 1}, "daily": {"started": "2026-09-30T16:35:05-04:00", "exit": 1}}}
+    if settings.timezone_name() not in ("America/New_York", "US/Eastern"):
+        return
+    assert "update" not in _keys(_at("2026-09-30T05:30"), state)        # too soon
+    assert "update" in _keys(_at("2026-09-30T05:50"), state)            # half an hour later
+    assert "update" not in _keys(_at("2026-09-30T09:00"), state)        # the window closed
+    assert "daily" not in _keys(_at("2026-09-30T18:00"), state)
+    state["jobs"]["update"]["exit"] = 0
+    assert "update" not in _keys(_at("2026-09-30T05:50"), state)

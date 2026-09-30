@@ -33,6 +33,9 @@ log = logging.getLogger("focos.heartbeat")
 RESTART_EXIT = 75                 # "start me again": the OS task and launchd both bring the app back
 TICK_SECONDS = 20
 STATE_FILE = "heartbeat.json"
+# Jobs that are safe to try again inside their window when they fail (a network blip at 05:15 should not cost a
+# day). Trading passes and briefs are not retried: the next pass or run is the retry.
+RETRY_ON_FAILURE = {"update": timedelta(minutes=30), "keepalive": timedelta(minutes=30)}
 
 
 def state_file() -> Path:
@@ -133,7 +136,11 @@ def due(now: datetime, state: dict, jobs: list | None = None) -> list[tuple[date
             continue
         started = last_started(job.key, state)
         if started is not None and started >= slot:
-            continue
+            mine = (state.get("jobs") or {}).get(job.key) or {}
+            retry = RETRY_ON_FAILURE.get(job.key)
+            failed = mine.get("exit") not in (None, 0) and _parse(mine.get("started")) == started
+            if not (retry and failed and now - started >= retry):
+                continue
         out.append((slot, job))
     return sorted(out, key=lambda x: x[0])
 

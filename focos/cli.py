@@ -394,7 +394,10 @@ def update_cmd(check: bool = typer.Option(False, "--check", help="only report wh
 
     r = repo or updater.DEFAULT_REPO
     if auto:
-        _echo(updater.auto_update(r, log=lambda m: typer.echo(f"[update] {m}")))
+        out = updater.auto_update(r, log=lambda m: typer.echo(f"[update] {m}"))
+        _echo(out)
+        if out.get("error"):
+            raise typer.Exit(1)      # the app retries a failed update in half an hour
         return
     if check:
         _echo(updater.check(r))
