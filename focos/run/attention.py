@@ -23,6 +23,8 @@ def sandbox_alerts(snapshot: dict | None, today: str) -> list[dict]:
     plan = exits.build(exits.view_from_snapshot(snapshot), today=today, write_proposals=False, persist=False)
     out = []
     for e in plan.get("required_exits") or []:
+        if e.get("kind", "stop") != "stop":
+            continue  # an earnings exit is planned, not an alarm
         out.append(_a("critical", "sandbox_stop_breached",
                       f"Sandbox {e['symbol']} is below its stop ({e['reason']}); the next trading pass sells it",
                       symbol=e["symbol"]))

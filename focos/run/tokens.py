@@ -89,6 +89,17 @@ def _robinhood_wanted() -> bool:
         return False
 
 
+def keepalive_failed(ka: dict | None, rs: dict) -> bool:
+    """Whether the last keep-alive's auth failure still stands. One that failed only because the login was
+    missing is over once the login is back; one where Robinhood refused a present token stands until the next
+    keep-alive succeeds."""
+    ka = ka or {}
+    if not (ka.get("ok") is False and ka.get("auth_error")):
+        return False
+    missing_then = (ka.get("token_before") or {}).get("present") is False
+    return not (missing_then and rs.get("present") and not rs.get("expired"))
+
+
 def alerts(days_ahead: int = 5) -> list[dict]:
     e = expiries()
     out: list[dict] = []
@@ -107,7 +118,7 @@ def alerts(days_ahead: int = 5) -> list[dict]:
         elif rs["expired"]:
             out.append({"severity": "warn", "code": "robinhood_access_expired",
                         "text": f"Robinhood access token expired; the next run will try to refresh it. If it fails, {AUTH_FIX}"})
-        if ka.get("ok") is False and ka.get("auth_error") and not any(a["code"] == "robinhood_login_expired" for a in out):
+        if keepalive_failed(ka, rs) and not any(a["code"] == "robinhood_login_expired" for a in out):
             out.append({"severity": "critical", "code": "robinhood_login_expired",
                         "text": f"The Robinhood keep-alive on {ka.get('date')} could not authenticate; {AUTH_FIX}"})
     if e["claude_refresh_expires"]:

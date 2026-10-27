@@ -621,6 +621,13 @@ class SandboxRules(_Lenient):
     equity_ceiling_multiple: float | None = Field(default=None, ge=1)
     # Advisory only. The gate cannot enforce this: the order payload carries no instrument class, and
     # resolving one would put a network call inside the hook, which fails orders closed on a timeout.
+    # Entry quality, read from each buy's proposal. All off unless set: a target at least this many times the
+    # risk, a stop at least this many ATRs below the entry (the proposal carries `atr`), a planned hold of at
+    # least this many trading days, and no entry with a report inside the hold (plus a forced exit before one).
+    min_reward_risk: float | None = Field(default=None, gt=0)
+    min_stop_atr: float | None = Field(default=None, gt=0)
+    min_horizon_days: int | None = Field(default=None, ge=1)
+    earnings_blackout: bool = False
     instruments: list[Literal["stock", "etf"]] = ["stock", "etf"]
     min_price: float = 5.0
     blocklist_patterns: list[str] = []

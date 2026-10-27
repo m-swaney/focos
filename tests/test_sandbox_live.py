@@ -82,3 +82,32 @@ def test_read_survives_a_corrupt_file(initialized_home: Path):
     live.path().write_text("{not json", encoding="utf-8")
     assert live.read() is None
     assert live.fresh() is False
+
+
+def test_gate_lets_a_pass_stop_the_shares_it_just_bought(initialized_home: Path, monkeypatch):
+    """The live view is read once at the start of a pass; a stop on an entry filled during it must not be
+    refused as a short sale. Another session's buy does not count."""
+    import json
+    from focos.sandbox import gate, rules as rules_mod
+
+    monkeypatch.setattr(gate, "_latest_raw", lambda: {"accounts": [{"account_number": "1111", "agentic_allowed": True}]})
+    monkeypatch.setattr("focos.sources.robinhood_snapshot.latest_two", lambda: (None, None))
+
+    now = datetime(2026, 9, 18, 10, 40, tzinfo=ET)
+    live.write({**live.normalize({"account_number": "1111", "portfolio": {"cash": 640.0, "total_value": 1100.0},
+                                  "positions": [], "quotes": [{"symbol": "ACME", "last": 40.0}]}),
+                "asof": (now - timedelta(minutes=8)).isoformat(timespec="seconds")})
+    gate.gate_log().parent.mkdir(parents=True, exist_ok=True)
+    buy = {"ts": (now - timedelta(minutes=2)).isoformat(timespec="seconds"), "tool": "place", "ok": True,
+           "symbol": "ACME", "side": "buy", "notional": 240.0, "order": {"symbol": "ACME", "quantity": "6"}}
+    with gate.gate_log().open("a", encoding="utf-8") as f:
+        f.write(json.dumps({**buy, "session_id": "pass-1"}) + "\n")
+
+    stop = {"symbol": "ACME", "side": "sell", "type": "stop_market", "quantity": "6", "stop_price": "37.00"}
+    ctx = gate.build_context("place", stop, now=now, session_id="pass-1")
+    assert ctx["positions"]["ACME"]["sellable"] == 6.0
+    reasons = rules_mod.validate(stop, ctx, settings.sandbox_rules()).reasons
+    assert not any("position to sell" in r or "exceeds sellable" in r for r in reasons)
+
+    other = gate.build_context("place", stop, now=now, session_id="pass-2")
+    assert "ACME" not in other["positions"]

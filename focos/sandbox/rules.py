@@ -10,6 +10,7 @@ ctx: {
   "prices": {symbol: float}, "orders_this_run": int, "orders_this_week": int, "buy_notional_this_week": float,
   "proposal": dict | None (matched by ref_id), "approved": bool,
   "used_ref_ids": {ref_id: "what it was used for"} (orders the broker already accepted),
+  "earnings": {symbol: "YYYY-MM-DD"} (next report, from the daily pipeline's catalysts),
 }
 
 The asymmetry is the design. A buy adds risk, so it has to clear every limit and carry a written plan. A sell
@@ -22,7 +23,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from . import market_calendar
@@ -88,6 +89,51 @@ def _is_time_of_day_reason(reason: str) -> bool:
 def is_regular_hours(now: datetime, no_trading_days: list[str] | None = None) -> bool:
     """Market holidays and 13:00 half-day closes count, not just the weekend and the clock."""
     return market_calendar.is_open(now, no_trading_days)
+
+
+def _entry_quality(prop: dict, entry: float | None, stop: float | None, rules: dict, ctx: dict) -> list[str]:
+    """The opt-in bar a new position's plan has to clear, measured from the proposal: a stop outside the noise
+    (in ATRs), a target worth the risk, a horizon long enough to let it work, and no report inside it. Each is
+    off unless its rule is set. A miss is a limit, not a shape problem: the trade is skipped this pass."""
+    r: list[str] = []
+    target = _f(prop.get("target"))
+    risk = (entry - stop) if (entry and stop is not None and stop < entry) else None
+    rr_min = _f(rules.get("min_reward_risk"))
+    if rr_min:
+        if target is None:
+            r.append("proposal is missing 'target'")
+        elif risk:
+            rr = (target - entry) / risk
+            if rr + 1e-9 < rr_min:
+                r.append(f"reward:risk {rr:.2f} to the target is below the {rr_min:g}:1 minimum")
+    atr_min = _f(rules.get("min_stop_atr"))
+    if atr_min:
+        atr = _f(prop.get("atr"))
+        if not atr:
+            r.append("proposal is missing 'atr' (the 14-day ATR from get_equity_technical_indicators)")
+        elif risk is not None and risk + 1e-9 < atr_min * atr:
+            r.append(f"stop is {risk / atr:.2f} ATR below entry; min_stop_atr wants at least {atr_min:g} "
+                     f"(stop at or below {entry - atr_min * atr:.2f})")
+    hz_min = _f(rules.get("min_horizon_days"))
+    horizon = _f(prop.get("horizon_days"))
+    if hz_min and horizon is not None and horizon < hz_min:
+        r.append(f"horizon_days {horizon:g} is below the {hz_min:g}-day minimum hold")
+    if rules.get("earnings_blackout"):
+        if "next_earnings" not in prop:
+            r.append("proposal is missing 'next_earnings' (the date from get_earnings_calendar, or \"none\")")
+        today = ctx["now"].date()
+        # Business days to calendar days, plus a day of slack so a report the morning after the horizon counts.
+        until = today + timedelta(days=int((horizon or 0) * 7 / 5) + 1)
+        sym = str(prop.get("symbol", "")).upper()
+        for d in ((ctx.get("earnings") or {}).get(sym), prop.get("next_earnings")):
+            try:
+                day = date.fromisoformat(str(d)[:10]) if d else None
+            except ValueError:
+                continue
+            if day and today <= day <= until:
+                r.append(f"{sym} reports earnings on {day} inside the holding horizon; no entries into a report")
+                break
+    return r
 
 
 def validate_cancel(order: dict, ctx: dict) -> Verdict:
@@ -273,6 +319,7 @@ def validate(order: dict, ctx: dict, rules: dict) -> Verdict:
                     r.append(f"proposal stop_loss {stop:.2f} is not below the entry price {entry:.2f}")
                 if prop.get("paper"):
                     r.append("proposal is marked paper: true")
+                r.extend(_entry_quality(prop, entry, stop, rules, ctx))
         elif prop is not None:
             # An exit needs no proposal, but if it names one, that file has to be about this exit.
             if str(prop.get("symbol", "")).upper() != symbol:

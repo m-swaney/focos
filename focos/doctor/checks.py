@@ -84,9 +84,11 @@ def run_all() -> list[Check]:
         from ..run import tokens
         rs = tokens.robinhood_status()
         ka = tokens.keepalive_record() or {}
-        ka_txt = ("never run" if not ka else f"keep-alive {'ok' if ka.get('ok') else 'failed'} on {ka.get('date')}")
+        ka_bad = tokens.keepalive_failed(ka, rs)
+        ka_txt = ("never run" if not ka else f"keep-alive {'ok' if ka.get('ok') else 'failed'} on {ka.get('date')}"
+                  + ("" if ka.get("ok") or ka_bad else ", login back since"))
         hl = rs.get("hours_left")
-        out.append(Check(id="robinhood_token", ok=bool(rs["present"] and not rs["expired"] and (hl is None or hl > 12) and ka.get("ok", True)),
+        out.append(Check(id="robinhood_token", ok=bool(rs["present"] and not rs["expired"] and (hl is None or hl > 12) and not ka_bad),
                          severity="error" if (not rs["present"] or rs["expired"]) else "warn", title="Robinhood login",
                          detail=(f"expires in {hl:.0f}h; {ka_txt}" if hl is not None else f"not connected; {ka_txt}"),
                          fix="Run `focos auth robinhood`."))
@@ -129,6 +131,36 @@ def run_all() -> list[Check]:
                      severity="warn", title="Last daily run",
                      detail=(f"{'ok' if daily.get('ok') else 'failed: ' + str(daily.get('error') or '')[:120]} {age:.0f}h ago" if daily and age is not None else "no runs yet"),
                      fix="Run `focos run --mode daily` and read state/logs/<date>-daily-run.log.", fix_action="run_daily"))
+    for mode, title, fix in (
+            ("trade", "Last trading pass", "Read state/logs/<date>-trade-run.log; the next pass retries on its own."),
+            ("weekly", "Last weekly run", "Run `focos run --mode weekly` and read state/logs/<date>-weekly-run.log."),
+            ("monthly", "Last monthly run", "Run `focos run --mode monthly` and read state/logs/<date>-monthly-run.log.")):
+        e = st_all.get(mode) or {}
+        if not e.get("finished") or e.get("ok") is not False:
+            continue
+        err = str(e.get("error") or next((v.get("error") for v in (e.get("stages") or {}).values()
+                                          if isinstance(v, dict) and v.get("error")), "") or "unknown error")
+        if "focos auth robinhood" in err:
+            from ..run import tokens
+            rs = tokens.robinhood_status()
+            if rs["present"] and not rs["expired"]:
+                continue  # the login is back; the next pass runs on its own
+            fix = "Run `focos auth robinhood`."
+        age = _age_hours(e.get("finished"))
+        out.append(Check(id=f"last_{mode}_run", ok=False, severity="warn", title=title,
+                         detail=f"failed {age:.0f}h ago: {err[:160]}" if age is not None else f"failed: {err[:160]}",
+                         fix=fix))
+    # the sandbox's own stop: buys paused until the owner lifts it
+    try:
+        from ..sandbox import state as sb_state
+        sb = sb_state.summary(None)
+        acct = (settings.read_json(paths.SANDBOX / "scorecard.json", {}) or {}).get("account") or {}
+        if sb.get("killed") or acct.get("halted"):
+            why = (f"halted at {acct.get('drawdown_pct', 0):.0%} drawdown" if acct.get("halted") else "halted")
+            out.append(Check(id="sandbox_halted", ok=False, severity="warn", title="Agentic trading",
+                             detail=f"{why}: new positions are paused", fix="Run `focos sandbox resume` when you are ready."))
+    except Exception:  # noqa: BLE001
+        pass
     # the app: one OS task, and the heartbeat inside it that runs every scheduled job
     from .. import heartbeat, scheduler
     sch = scheduler.current()

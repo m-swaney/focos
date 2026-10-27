@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .. import paths, settings
-from . import brokers
+from . import brokers, exits
 from . import live
 from . import rules as rules_mod
 from . import state as sb_state
@@ -60,11 +60,11 @@ def _pass_kind(now: datetime) -> str:
     return "exits" if data.get("kind") == "exits" else "trade"
 
 
-def _recent_gate_entries(days: int = 7) -> list[dict]:
+def _recent_gate_entries(days: int = 7, now: datetime | None = None) -> list[dict]:
     log = gate_log()
     if not log.exists():
         return []
-    cutoff = datetime.now(market_tz()) - timedelta(days=days)
+    cutoff = (now or datetime.now(market_tz())) - timedelta(days=days)
     out = []
     for line in log.read_text(encoding="utf-8").splitlines():
         try:
@@ -76,7 +76,48 @@ def _recent_gate_entries(days: int = 7) -> list[dict]:
     return out
 
 
-def build_context(tool: str, order: dict, now: datetime | None = None) -> dict:
+def _credit_session_buys(positions: dict, prices: dict, session_id: str | None, view_asof: str | None,
+                         now: datetime) -> dict:
+    """Add this pass's own gate-approved buys to the position view, so the protective stop placed right after
+    an entry is not refused as a short sale. The view is read once at the start of the pass and never sees a
+    fill made during it. Only the same session's buys after the view was taken count; an entry that did not
+    fill leaves the stop to the broker, which rejects a sell of shares the account does not hold."""
+    if not session_id:
+        return positions
+    since = now - timedelta(minutes=90)
+    if view_asof:
+        try:
+            since = max(since, datetime.fromisoformat(str(view_asof)))
+        except ValueError:
+            pass
+    out = {s: dict(p) for s, p in positions.items()}
+    for e in _recent_gate_entries(1, now):
+        if not (e.get("tool") == "place" and e.get("ok") and e.get("side") == "buy"
+                and e.get("session_id") == session_id and e.get("symbol")):
+            continue
+        try:
+            if datetime.fromisoformat(e["ts"]) < since:
+                continue
+        except (KeyError, ValueError):
+            continue
+        sym = str(e["symbol"]).upper()
+        o = e.get("order") or {}
+        try:
+            qty = float(o.get("quantity")) if o.get("quantity") is not None else None
+        except (TypeError, ValueError):
+            qty = None
+        if qty is None and e.get("notional") and prices.get(sym):
+            qty = float(e["notional"]) / float(prices[sym])
+        if not qty:
+            continue
+        p = out.setdefault(sym, {"value": 0.0, "quantity": 0.0, "sellable": 0.0})
+        p["quantity"] = float(p.get("quantity") or 0) + qty
+        p["sellable"] = float(p.get("sellable") or 0) + qty
+        p["value"] = float(p.get("value") or 0) + float(e.get("notional") or 0)
+    return out
+
+
+def build_context(tool: str, order: dict, now: datetime | None = None, session_id: str | None = None) -> dict:
     now = now or datetime.now(market_tz())
     raw = _latest_raw()
     from ..sources import robinhood_snapshot as rh
@@ -99,6 +140,8 @@ def build_context(tool: str, order: dict, now: datetime | None = None) -> dict:
                                    "sellable": p.get("sellable") or p.get("quantity") or 0.0}
                      for p in (live_view.get("positions") or [])}
         prices = {**prices, **(live_view.get("quotes") or {})}
+    positions = _credit_session_buys(positions, prices, session_id,
+                                     live_view.get("asof") if live_fresh else None, now)
     # Frequency caps are entry controls, so only buys count toward them (rules.validate applies them to buys).
     recent = [e for e in _recent_gate_entries(7) if e.get("tool") == "place" and e.get("ok") and e.get("side") == "buy"]
     run_window = now - timedelta(minutes=90)
@@ -132,6 +175,7 @@ def build_context(tool: str, order: dict, now: datetime | None = None) -> dict:
         "proposal": proposal,
         "approved": bool(ref_id) and (paths.APPROVALS / f"{ref_id}.approved").exists(),
         "used_ref_ids": used_ref_ids(),
+        "earnings": exits.earnings_dates(),
     }
 
 
@@ -189,7 +233,7 @@ def main() -> int:
     tool = guarded[tool_name]
     order = adapter.order_from_tool_input(payload.get("tool_input") or {}).model_dump(exclude_none=True)
     try:
-        ctx = build_context(tool, order)
+        ctx = build_context(tool, order, session_id=payload.get("session_id"))
         verdict = rules_mod.validate(order, ctx, settings.sandbox_rules())
     except Exception as e:  # fail closed
         verdict = rules_mod.Verdict(ok=False, reasons=[f"gate error: {type(e).__name__}: {e}"])

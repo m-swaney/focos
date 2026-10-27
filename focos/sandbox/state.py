@@ -116,7 +116,8 @@ def summary(snapshot: dict | None) -> dict:
         "rules": {k: rules.get(k) for k in ("budget_usd", "max_position_weight", "max_order_usd", "weekly_budget_usd",
                                              "max_orders_per_run", "max_orders_per_week", "instruments", "min_price",
                                              "max_drawdown_pct", "equity_ceiling_multiple", "cash_floor_pct",
-                                             "require_approval_first_n")},
+                                             "require_approval_first_n", "min_reward_risk", "min_stop_atr",
+                                             "min_horizon_days", "earnings_blackout")},
         "account": {
             "last4": agentic.get("last4") if agentic else None,
             "portfolio": agentic.get("portfolio") if agentic else None,

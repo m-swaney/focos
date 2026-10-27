@@ -15,6 +15,12 @@ cash_floor_pct: 0.05
 max_orders_per_run: 2
 max_orders_per_week: 4
 
+# Entry quality, checked against each buy's proposal file. Off when unset.
+min_reward_risk: 2.0         # target at least 2x the distance to the stop
+min_stop_atr: 1.0            # stop at least one 14-day ATR below the entry (the proposal carries `atr`)
+min_horizon_days: 10         # planned hold, in trading days
+earnings_blackout: true      # no entry with a report inside the hold; held positions are sold the session before
+
 instruments: [stock, etf]
 min_price: 5.0
 blocklist_patterns: ["^(TQQQ|SQQQ|SPXL|SPXS|UVXY|SVXY|SOXL|SOXS|TSLL|NVDL)$", "3X", "2X", "LEVERAGED", "INVERSE"]

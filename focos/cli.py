@@ -860,6 +860,23 @@ def notify_log(n: int = 20) -> None:
 
 
 @app.command()
+def health() -> None:
+    """Only what is wrong, and how to fix each. Exits 1 if anything is."""
+    from .doctor import checks
+
+    bad = [c for c in checks.run_all() if c.ok is False]
+    if not bad:
+        typer.echo("Healthy: focos is running and nothing is wrong.")
+        return
+    order = {"error": 0, "warn": 1, "info": 2}
+    for c in sorted(bad, key=lambda c: order.get(c.severity, 3)):
+        typer.echo(f"{'ERROR' if c.severity == 'error' else 'WARN '} {c.title}: {c.detail}")
+        if c.fix:
+            typer.echo(f"      fix: {c.fix}")
+    raise typer.Exit(1)
+
+
+@app.command()
 def doctor(export: bool = typer.Option(False, "--export", help="write a redacted diagnostics zip"),
            legacy: bool = typer.Option(False, "--legacy", hidden=True)) -> None:
     """Health checks with fix-it instructions. --export writes a redacted diagnostics zip for support."""

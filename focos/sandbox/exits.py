@@ -23,6 +23,7 @@ from . import journal, live
 
 PLAN_FILE = "exits.json"
 STOP_TYPES = ("stop_market", "stop_limit")
+EXIT_KINDS = ("stop_exit", "earnings_exit")
 
 
 def plan_file():
@@ -83,6 +84,48 @@ def business_days_between(start: _date, end: _date) -> int:
     return days
 
 
+def next_business_day(d: _date) -> _date:
+    d += timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d
+
+
+def earnings_dates() -> dict[str, str]:
+    """Next earnings date by symbol, from the daily pipeline's catalysts (state/derived/latest)."""
+    got = settings.read_json(paths.LATEST / "catalysts.json", {}) or {}
+    out: dict[str, str] = {}
+    for e in got.get("earnings") or [] if isinstance(got, dict) else []:
+        if isinstance(e, dict) and e.get("symbol") and e.get("date"):
+            out.setdefault(str(e["symbol"]).upper(), str(e["date"])[:10])
+    return out
+
+
+def earnings_due(symbol: str, prop: dict | None, today: str, known: dict[str, str]) -> str | None:
+    """The earnings date that forces an exit now: on or before the next business day, so the position is
+    out before the report whether it lands after today's close or before tomorrow's open."""
+    cands = [known.get(symbol), str((prop or {}).get("next_earnings") or "")[:10]]
+    try:
+        t = _date.fromisoformat(today)
+    except ValueError:
+        return None
+    for c in cands:
+        try:
+            d = _date.fromisoformat(c) if c else None
+        except ValueError:
+            continue
+        if d and t <= d <= next_business_day(t):
+            return d.isoformat()
+    return None
+
+
+def _earnings_rule_on() -> bool:
+    try:
+        return bool(settings.sandbox_rules().get("earnings_blackout"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def resting_stops(view: dict) -> dict[str, list[dict]]:
     """Open sell stop orders by symbol, from the live read."""
     out: dict[str, list[dict]] = {}
@@ -101,7 +144,7 @@ def _existing_exit(symbol: str, today: str, proposals: list[dict], used: set[str
     """Today's harness-written exit for this symbol, if its ref_id has not been spent: a second pass re-sends
     the same order rather than inventing a new one."""
     for p in reversed(proposals):
-        if (p.get("kind") == "stop_exit" and str(p.get("symbol", "")).upper() == symbol
+        if (p.get("kind") in EXIT_KINDS and str(p.get("symbol", "")).upper() == symbol
                 and str(p.get("date")) == today and str(p.get("ref_id")) not in used):
             return p
     return None
@@ -118,6 +161,7 @@ def build(view: dict | None = None, today: str | None = None, write_proposals: b
     used = {str(o.get("ref_id")) for o in orders if o.get("ref_id")}
     placed_buys = {str(o.get("ref_id")) for o in orders if str(o.get("side", "")).lower() == "buy" and o.get("ref_id")}
     stops_by_symbol = resting_stops(view)
+    earnings = earnings_dates() if _earnings_rule_on() else None
 
     rows, required, missing, unmanaged = [], [], [], []
     for pos in view.get("positions") or []:
@@ -147,24 +191,35 @@ def build(view: dict | None = None, today: str | None = None, write_proposals: b
         row.update({"opened": opened, "opening_ref_id": prop.get("ref_id"), "proposal_file": prop["_file"],
                     "stop_loss": stop, "target": target, "horizon_days": horizon or None, "days_held": held_days})
 
+        due = earnings_due(symbol, prop, today, earnings) if earnings is not None else None
+        exit_kind = exit_reason = None
         if stop is not None and price is not None and price <= stop:
-            row["status"] = "stop_breached"
+            row["status"], exit_kind = "stop_breached", "stop_exit"
+            exit_reason = f"price {price:.2f} is at or below the {stop:.2f} stop"
+        elif due:
+            row["status"], exit_kind = "earnings_due", "earnings_exit"
+            exit_reason = f"earnings on {due}; the sandbox does not hold through a report"
+        if exit_kind:
             existing = _existing_exit(symbol, today, proposals, used)
             ref_id = str(existing["ref_id"]) if existing else str(uuid.uuid4())
             # All of it. Shares a resting stop holds are not sellable until that stop is cancelled.
             order = {"symbol": symbol, "side": "sell", "type": "market", "quantity": _qty(qty),
                      "time_in_force": "gfd", "market_hours": "regular_hours", "ref_id": ref_id}
-            exit_row = {"symbol": symbol, "reason": f"price {price:.2f} is at or below the {stop:.2f} stop",
+            exit_row = {"symbol": symbol, "kind": "stop" if exit_kind == "stop_exit" else "earnings",
+                        "reason": exit_reason,
                         "order": order, "cancel_first": [o.get("id") or o.get("order_id") for o in resting
                                                           if o.get("id") or o.get("order_id")],
-                        "proposal_file": f"{today}-{symbol}-sell-stop.json"}
+                        "proposal_file": f"{today}-{symbol}-sell-{'stop' if exit_kind == 'stop_exit' else 'earnings'}.json"}
             required.append(exit_row)
             if write_proposals and not existing:
                 settings.write_json(paths.PROPOSALS / exit_row["proposal_file"], {
-                    "ref_id": ref_id, "date": today, "symbol": symbol, "side": "sell", "kind": "stop_exit",
+                    "ref_id": ref_id, "date": today, "symbol": symbol, "side": "sell", "kind": exit_kind,
                     "quantity": qty, "exit_of": prop.get("ref_id"),
-                    "thesis": f"Stop exit written by focos: {exit_row['reason']} (from {prop['_file']}).",
-                    "entry_reason": "stop breached", "exit_plan": "Full exit. No re-entry for 30 days.",
+                    "thesis": f"{'Stop' if exit_kind == 'stop_exit' else 'Earnings'} exit written by focos: "
+                              f"{exit_row['reason']} (from {prop['_file']}).",
+                    "entry_reason": "stop breached" if exit_kind == "stop_exit" else "earnings ahead",
+                    "exit_plan": ("Full exit. No re-entry for 30 days." if exit_kind == "stop_exit"
+                                  else "Full exit before the report. Re-entry after it is a new trade."),
                     "stop_loss": None, "target": None, "horizon_days": 0, "paper": False, "created_by": "focos",
                 })
         elif target is not None and price is not None and price >= target:
@@ -174,7 +229,7 @@ def build(view: dict | None = None, today: str | None = None, write_proposals: b
         else:
             row["status"] = "ok"
 
-        if row["status"] != "stop_breached" and stop is not None and not resting:
+        if not exit_kind and stop is not None and not resting:
             missing.append({"symbol": symbol, "reason": f"no resting stop at the broker for the {stop:.2f} stop",
                             "order": {"symbol": symbol, "side": "sell", "type": "stop_market",
                                       "quantity": _qty(sellable if sellable is not None else qty),
@@ -231,7 +286,8 @@ def prompt_block(plan: dict) -> str:
     lines = []
     if plan.get("required_exits"):
         lines.append("### Required exits: send these first, exactly as written")
-        lines.append("focos checked each position against the stop in its proposal. These are breached. Each order "
+        lines.append("focos checked each position against the stop in its proposal and the earnings calendar. These "
+                     "are breached stops or reports due before the next session. Each order "
                      "below is complete except `account_number` (the full number from `get_accounts`). Its proposal "
                      "file is already written. If `cancel_first` lists order ids, cancel those resting stops first "
                      "(`cancel_equity_order`) so the shares become sellable. Do not second-guess a breached stop, "
